@@ -1,0 +1,93 @@
+flowchart TD
+
+    %% ─── Entry Points ────────────────────────────────────────────────────────
+    JS(["/job-search"])
+    JSE(["/job-search-email"])
+
+    %% ─── STAGE 1: SEEK ───────────────────────────────────────────────────────
+    subgraph SEEK ["STAGE 1 — SEEK"]
+        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator\n① Generate candidate-summary.json  (cached per day)\n② Init SQLite schema  (CREATE TABLE IF NOT EXISTS)\n③ MCP connectivity probe  (LinkedIn · Gmail · Indeed · ZipRecruiter)"]
+
+        SUB_LI["job-seeker-linkedin\nLinkedIn MCP"]
+        SUB_EM["job-seeker-email\nGmail MCP"]
+        SUB_IND["job-seeker-indeed\nIndeed MCP"]
+        SUB_ZIP["job-seeker-ziprecruiter\nZipRecruiter MCP"]
+        SUB_ADZ["job-seeker-adzuna\nAdzuna Canada REST API"]
+        SUB_GH["job-seeker-greenhouse\nGreenhouse · Lever public APIs"]
+        SUB_RES["job-seeker-research\nWellfound · Ashby · funded startups"]
+
+        S_DONE["Merge results  ·  deduplicate against existing DB URLs\nAudit log → jobs/search-YYYY-MM-DD.json\nINSERT OR IGNORE into DB  (status = 'new')"]
+
+        SEEKER -->|"conditional on probe"| SUB_LI & SUB_EM & SUB_IND & SUB_ZIP
+        SEEKER -->|"always · parallel"| SUB_ADZ & SUB_GH & SUB_RES
+        SUB_LI & SUB_EM & SUB_IND & SUB_ZIP & SUB_ADZ & SUB_GH & SUB_RES --> S_DONE
+    end
+
+    %% ─── Email-only path (bypasses SEEK orchestrator) ────────────────────────
+    EMAIL_ONLY["job-seeker-email  (standalone)\nReads most-recent LinkedIn job-alert from Gmail\nExtracts postings · labels thread 'AI'\nINSERT OR IGNORE into DB  (status = 'new')"]
+
+    %% ─── Persistent store ────────────────────────────────────────────────────
+    DB[("SQLite DB\npostings")]
+
+    %% ─── STAGE 2: SCORE ──────────────────────────────────────────────────────
+    subgraph SCORE ["STAGE 2 — SCORE  (job-preparer · Sonnet)"]
+        SC1["Query DB\nWHERE status = 'new'  OR  (status = 'scored' AND scored_date < 7 days ago)"]
+        SC2["Pre-filter\n① Hard disqualifiers → UPDATE status = 'skipped'\n   (US-only · on-site only · intern · entry-level · relocation required)\n② Soft skill mismatch → excluded this run  (status unchanged, re-evaluated next run)"]
+        SC3["Write scoring-batch-N.json  (≤ 20 postings per file)\nDelete stale batch files first"]
+        SC4["scoring_module  (Python · Claude API · threaded · prompt-cached)\n\nPer posting:\n  · WebFetch full JD text  (skipped if jd_text already in DB)\n  · Score 5 dimensions  →  weighted base score  (× 10 = 1–100)\n      tech fit 35%  ·  seniority match 25%  ·  domain fit 20%\n      remote/Canada confirmed 10%  ·  role clarity 10%\n  · Disqualifier modifiers:\n      requires named certification −40  ·  US-only −25  ·  relocation required −30\n  · Freshness modifiers:  ≤3 days +8  ·  4–7 days +4  ·  15–30 days −5  ·  >30 days −12\n  · Applicant modifiers:  <25 +5  ·  101–200 −5  ·  >200 −10\n  · final_score = clamp(base_score + modifier, 1, 100)\n  · UPDATE DB: base_score · modifier · final_score · job_description_text · status = 'scored'"]
+        SC1 --> SC2 --> SC3 --> SC4
+    end
+
+    %% ─── STAGE 3: SELECT ─────────────────────────────────────────────────────
+    subgraph SELECT ["STAGE 3 — SELECT  (job-preparer)"]
+        SEL1["Query DB\nWHERE status = 'scored'  ORDER BY final_score DESC"]
+        SEL2["Take top 5  where  final_score ≥ 75\n(if fewer than 5 pass, take all that do)"]
+        SEL3["UPDATE DB:  status = 'selected',  selected_date = today"]
+        SEL1 --> SEL2 --> SEL3
+    end
+
+    %% ─── STAGE 4: PREPARE ────────────────────────────────────────────────────
+    subgraph PREPARE ["STAGE 4 — PREPARE  (job-preparer orchestrates  ·  job-pipeline-worker × N)"]
+        PR1["TeamCreate:  job-prep-YYYY-MM-DD\nTaskCreate × N per job\n(url · company · title · output_dir · score · job_description_text)"]
+        PR2["Spawn job-pipeline-worker × N  (Sonnet · all in parallel · max 5)"]
+
+        subgraph WLOOP ["Per Worker — work loop  (repeats until no unclaimed tasks remain)"]
+            W1["Claim task  →  TaskUpdate: status = in_progress"]
+            W2["Spawn resume-tailor  (Opus)\n→ ATS-targeted CV YAML\n→ output_dir/{Name}_{Company}_Resume.yaml"]
+            W3["rendercv render\n→ output_dir/{Name}_{Company}_Resume.pdf"]
+            W4["Spawn cover-letter-creator  (Opus)\n→ Cover Letter MD\n→ output_dir/{Company}_Cover_Letter_CV.yaml  (rendercv-wrapped)"]
+            W5["rendercv render\n→ output_dir/{Company}_Cover_Letter.pdf"]
+            W6["TaskUpdate: completed\nDB UPDATE: status = 'applied'\nSendMessage → lead  (output paths + status)"]
+            WC{{"More\nunclaimed\ntasks?"}}
+            WIDLE["Send lead:  idle — no tasks remaining"]
+
+            W1 --> W2 --> W3 --> W4 --> W5 --> W6 --> WC
+            WC -->|"yes"| W1
+            WC -->|"no"| WIDLE
+        end
+
+        PR1 --> PR2 --> W1
+        WIDLE --> PDONE["job-preparer: all workers idle\nSendMessage shutdown → each worker\nTeamDelete\nWrite final-report.md"]
+    end
+
+    %% ─── Output ──────────────────────────────────────────────────────────────
+    OUT["OUTPUT  ·  job-data/output/YYYY-MM-DD/\n  final-report.md  (rank · company · title · score · URL · status)\n  {Company}/\n    {Name}_{Company}_Resume.pdf\n    {Company}_Cover_Letter.pdf\n    {Company}_Cover_Letter.md"]
+
+    %% ─── Top-level flow: skills spawn orchestrators ──────────────────────────
+    JS  -->|"1 · spawn"| SEEKER
+    JS  -->|"2 · spawn  (after Seek)"| SC1
+    JSE -->|"1 · spawn"| EMAIL_ONLY
+    JSE -->|"2 · spawn  (after email-seek)"| SC1
+
+    %% ─── DB read/write connections ───────────────────────────────────────────
+    S_DONE     -.->|"INSERT  status='new'"| DB
+    EMAIL_ONLY -.->|"INSERT  status='new'"| DB
+    DB         -.->|"read"| SC1
+    SC4        -.->|"UPDATE  status='scored'"| DB
+    SEL3       -.->|"UPDATE  status='selected'"| DB
+    W6         -.->|"UPDATE  status='applied'"| DB
+
+    %% ─── Stage-to-stage flow ─────────────────────────────────────────────────
+    SC4   --> SEL1
+    SEL3  --> PR1
+    PDONE --> OUT

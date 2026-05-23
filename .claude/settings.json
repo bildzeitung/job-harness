@@ -1,0 +1,82 @@
+{
+    "env": {
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    },
+    "permissions": {
+        "allow": [
+            "WebSearch",
+            "WebFetch",
+            "Agent(*)",
+            "Read(*_CV.yaml)",
+            "Edit(*_CV.yaml)",
+            "Read(harness/**)",
+            "Write(harness/**)",
+            "Read(job-data/**)",
+            "Write(job-data/**)",
+            "Edit(job-data/**)",
+            "Read(applications/**)",
+            "Write(applications/**)",
+            "Edit(applications/**)",
+            "Bash(python3 *)",
+            "Bash(bash -c *)",
+            "Bash(jq *)",
+            "Bash(cat *)",
+            "Bash(mkdir *)",
+            "Bash(ls *)",
+            "Bash(cp *)",
+            "Bash(mv *)",
+            "Bash(echo *)",
+            "Bash(find *)",
+            "Bash(grep *)",
+            "Bash(wc *)",
+            "Bash(sort *)",
+            "Bash(head *)",
+            "Bash(tail *)",
+            "Bash(date *)",
+            "Bash(curl *)",
+            "Bash(rendercv render *)",
+            "Bash(git *)",
+            "Bash(rm *)",
+            "Read(.claude/**)",
+            "Write(.claude/worktrees/**)",
+            "Edit(.claude/worktrees/**)",
+            "mcp__linkedin__search_jobs",
+            "mcp__linkedin__get_job_details",
+            "mcp__linkedin__get_my_profile",
+            "mcp__claude_ai_Gmail__authenticate",
+            "mcp__claude_ai_Gmail__complete_authentication",
+            "mcp__claude_ai_Gmail__search_threads",
+            "mcp__claude_ai_Gmail__get_thread",
+            "mcp__claude_ai_Gmail__list_labels",
+            "mcp__claude_ai_Gmail__create_label",
+            "mcp__claude_ai_Gmail__label_thread",
+            "mcp__claude_ai_Indeed__search_jobs",
+            "mcp__claude_ai_Indeed__get_job_details",
+            "mcp__claude_ai_Indeed__get_company_data",
+            "mcp__claude_ai_Indeed__get_resume",
+            "mcp__claude_ai_ZipRecruiter__search_jobs",
+            "mcp__sqlite__create_table",
+            "mcp__sqlite__read_query",
+            "mcp__sqlite__write_query",
+            "mcp__sqlite__list_tables",
+            "mcp__sqlite__describe_table",
+            "mcp__sqlite__append_insight"
+        ]
+    },
+    "spinnerTipsEnabled": false,
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Write|Edit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "f=$(jq -r '.tool_input.file_path'); if echo \"$f\" | grep -qE '_CV\\.yaml$'; then dir=$(dirname \"$f\"); base=$(basename \"$f\"); cd \"$dir\" && rendercv render \"$base\"; fi",
+                        "timeout": 30,
+                        "statusMessage": "Rendering CV..."
+                    }
+                ]
+            }
+        ]
+    }
+}
