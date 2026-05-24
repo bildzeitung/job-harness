@@ -81,10 +81,10 @@ rm -f $JOB_DATA_ROOT/jobs/scoring-batch-*.json
 
 ### 3b. Run the scoring script
 
-Derive `PROJECT_ROOT` from `RESUME_FILE`, activate the venv, and pass all batch files to the scoring script in one call. The script handles parallelism internally and updates the DB directly.
+Activate the venv from the harness root and pass all batch files to the scoring script in one call. The script handles parallelism internally and updates the DB directly.
 
 ```bash
-PROJECT_ROOT=$(dirname $(bash -c 'echo $RESUME_FILE'))
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
 JOB_DATA_ROOT=$(bash -c 'echo $JOB_DATA_ROOT')
 . "$PROJECT_ROOT/venv/bin/activate"
 python -m scoring_module "$JOB_DATA_ROOT/jobs/scoring-batch-"*.json
