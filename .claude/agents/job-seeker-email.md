@@ -32,69 +32,27 @@ Then call `mcp__claude_ai_Gmail__get_thread` with the most recent thread ID to r
 
 ## Step 2: Extract Job Postings
 
-LinkedIn job alert emails are HTML-formatted with job cards. Each card contains a job title, company name, and a "View job" link.
+LinkedIn job alert emails are HTML-formatted with job cards. The `email_parser` module (installed in the project venv) handles parsing deterministically — no inline script needed.
 
-Write a Python script to `$CLAUDE_JOB_DIR/parse_linkedin_email.py` and run it to parse the HTML:
+Write the email HTML body to `$CLAUDE_JOB_DIR/email.html`, then run:
 
-```python
-import sys, re, json, html as html_lib
-
-body = sys.stdin.read()
-
-# LinkedIn job URLs in alert emails
-url_pattern = re.compile(
-    r'https://www\.linkedin\.com/(?:comm/)?jobs/view/(\d+)[^"\'\s>]*'
-)
-
-# Try to extract title/company near each URL using window of surrounding text
-jobs = []
-seen_ids = set()
-
-# Find all job URLs
-for m in url_pattern.finditer(body):
-    job_id = m.group(1)
-    if job_id in seen_ids:
-        continue
-    seen_ids.add(job_id)
-
-    start = max(0, m.start() - 800)
-    end = min(len(body), m.end() + 200)
-    window = body[start:end]
-
-    # Strip HTML tags for text extraction
-    clean = re.sub(r'<[^>]+>', ' ', window)
-    clean = html_lib.unescape(clean)
-    clean = re.sub(r'\s+', ' ', clean).strip()
-
-    # Heuristic: title is usually a short phrase before the company name
-    # Extract short capitalized phrases (likely job titles)
-    title_match = re.search(
-        r'\b((?:Principal|Staff|Distinguished|Senior|Lead|Architect|Director|VP|Head)[^·\|<\n]{5,80}?)(?:\s*[·|]|\s*at\s)',
-        clean, re.IGNORECASE
-    )
-    title = title_match.group(1).strip() if title_match else "Unknown Title"
-
-    # Company is often after "at " or near the title
-    company_match = re.search(r'(?:at\s+|·\s*)([A-Z][A-Za-z0-9 &,.\'-]{2,50})', clean)
-    company = company_match.group(1).strip() if company_match else "Unknown Company"
-
-    # Clean URL (use canonical form)
-    url = f"https://www.linkedin.com/jobs/view/{job_id}"
-
-    jobs.append({
-        "title": title,
-        "company": company,
-        "url": url,
-    })
-
-print(json.dumps(jobs))
+```bash
+/path/to/venv/bin/python -m email_parser $CLAUDE_JOB_DIR/email.html
 ```
 
-Pipe the email HTML body into the script via stdin. If the script produces poor title/company extraction, fall back to using the raw URL with title and company set to the best guess from context.
+To find the venv python: `bash -c 'echo $VIRTUAL_ENV'` or use the full path from `which python` after activating. In practice:
+
+```bash
+. /home/dmklein/PROJECTS/job-harness/venv/bin/activate && python -m email_parser $CLAUDE_JOB_DIR/email.html
+```
+
+The module outputs a JSON array of `{"title", "company", "url"}` objects, already filtered to senior-level titles. Capture the output and parse it.
+
+Pass `--no-filter` if you want the raw unfiltered list and intend to apply your own seniority check.
 
 ## Step 3: Apply Search Filters
 
-Keep only postings where the title contains at least one `seniority_keywords` value from `candidate-summary.json`. Discard clearly junior/mid titles. Deduplicate by URL within this batch.
+The module already filters by seniority (Senior, Principal, Staff, Lead, Architect, Director, VP, etc.). Additionally discard any postings not matching `seniority_keywords` from `candidate-summary.json` if those differ. Deduplicate by URL within this batch.
 
 Do **not** discard based on remote/Canada eligibility at this stage — the email often omits location details. The job-scorer will evaluate those criteria using the full posting.
 

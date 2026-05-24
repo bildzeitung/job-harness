@@ -1,4 +1,5 @@
 rendercv[full]
 -e ./scoring-module
+-e ./email-parser
 -e ./tui
 linkedin-scraper-mcp
