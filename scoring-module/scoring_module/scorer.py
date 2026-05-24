@@ -18,6 +18,25 @@ TODAY = date.today().isoformat()
 DB_PATH = os.environ.get("SQLITE_DB_PATH", "/home/dmklein/mcp-sqlite/job-search.db")
 JOB_DATA_ROOT = os.environ.get("JOB_DATA_ROOT", "")
 
+
+def _make_client() -> anthropic.Anthropic:
+    if api_key := os.environ.get("ANTHROPIC_API_KEY"):
+        return anthropic.Anthropic(api_key=api_key)
+    creds_path = Path.home() / ".claude" / ".credentials.json"
+    if creds_path.exists():
+        try:
+            with open(creds_path) as f:
+                creds = json.load(f)
+            token = creds.get("claudeAiOauth", {}).get("accessToken")
+            if token:
+                return anthropic.Anthropic(auth_token=token)
+        except Exception:
+            pass
+    raise RuntimeError(
+        "No Anthropic credentials found. Set ANTHROPIC_API_KEY in "
+        ".claude/settings.local.json, or log in with `claude login`."
+    )
+
 _SYSTEM_PROMPT = """You are a job-fit scorer. Score a job posting against this candidate profile and return JSON only.
 
 ## Candidate Profile
@@ -209,7 +228,7 @@ def score_batch(batch_file: str, max_workers: int = 5) -> int:
     if not JOB_DATA_ROOT:
         print("[WARN] JOB_DATA_ROOT not set; reports will not be saved", file=sys.stderr)
 
-    client = anthropic.Anthropic()
+    client = _make_client()
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
         result = _score_one(client, posting)

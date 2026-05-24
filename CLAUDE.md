@@ -23,6 +23,8 @@ The resume file path is configured as an environment variable. Each user sets th
 
 Agents read this at runtime via `bash -c 'echo $RESUME_FILE'`. This makes the harness shareable — clone the repo, set `RESUME_FILE`, and it works for any resume.
 
+**`ANTHROPIC_API_KEY` is not required.** The `scoring_module` Python script authenticates by falling back to the OAuth token in `~/.claude/.credentials.json` (the same session Claude Code uses). If you do have an API key, setting it takes priority.
+
 ## Rendering
 
 Editing the CV YAML automatically triggers a render via a PostToolUse hook. To render manually:
