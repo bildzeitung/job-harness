@@ -1,5 +1,6 @@
 # HARNESS
 job-data/
+.claude/worktrees
 
 # Python
 __pycache__/
