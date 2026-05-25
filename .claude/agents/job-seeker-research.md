@@ -1,7 +1,7 @@
 ---
 name: "job-seeker-research"
 description: "Finds companies actively hiring for the candidate's profile that are NOT posting on LinkedIn, Indeed, ZipRecruiter, or Greenhouse/Lever ATS pages. Focuses on recently funded companies, Ashby/niche boards, and FHIR-specific opportunities. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, WebSearch, WebFetch, ToolSearch
+tools: Read, Write, Bash, WebSearch, WebFetch, ToolSearch, mcp__sqlite__write_query
 model: sonnet
 color: orange
 ---
@@ -101,3 +101,22 @@ Save results to `$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.json` (today's date):
 Use `null` for `post_date` or `applicant_count` when not available.
 
 After saving, print: `[RESEARCH] Found {N} postings — saved to {path}`
+
+## Write Company Intelligence to DB
+
+Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
+
+For each verified posting, write one row to the `companies` table. Set both `remote_confirmed` and `canada_confirmed` to 1 — you have already manually verified both for every posting you surface. Compose a 1–2 sentence `notes` value capturing what makes this company interesting (e.g., funding stage, domain focus, team size if known, hiring signals). Escape single quotes by doubling them (`'` → `''`).
+
+```sql
+INSERT INTO companies (name, remote_confirmed, canada_confirmed, notes, researched_date, last_seen_date)
+VALUES ('{company}', 1, 1, '{escaped_notes}', '{YYYY-MM-DD}', '{YYYY-MM-DD}')
+ON CONFLICT(name) DO UPDATE SET
+  remote_confirmed = 1,
+  canada_confirmed = 1,
+  notes = CASE WHEN excluded.notes != '' THEN excluded.notes ELSE companies.notes END,
+  researched_date = excluded.researched_date,
+  last_seen_date = excluded.last_seen_date
+```
+
+This lets future pipeline runs skip re-researching companies already known to be remote + Canada-eligible.

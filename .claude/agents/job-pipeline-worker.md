@@ -39,11 +39,12 @@ The task description contains a JSON block:
   "title": "Principal Engineer",
   "output_dir": "$JOB_DATA_ROOT/output/YYYY-MM-DD/Acme_Corp",
   "score": 87,
-  "job_description_text": "Full cleaned text of the job posting (may be absent if scorer fetch failed)"
+  "job_description_text": "Full cleaned text of the job posting (may be absent if scorer fetch failed)",
+  "company_notes": "Brief company intelligence from prior research (may be absent)"
 }
 ```
 
-Extract all fields. `job_description_text` is pre-fetched by the job-scorer and embedded here by the team lead — no file I/O needed to retrieve it.
+Extract all fields. `job_description_text` is pre-fetched by the job-scorer and embedded here by the team lead — no file I/O needed to retrieve it. `company_notes` comes from the companies table if a prior run researched this company.
 
 ### 3. Run resume-tailor
 
@@ -53,6 +54,7 @@ Spawn the `resume-tailor` agent with a prompt that includes:
 - Explicit instruction: write the tailored resume YAML to `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.yaml` (use the candidate name read at Startup with spaces replaced by underscores)
 - Explicit instruction: skip step 6 (cover letter) — this pipeline handles cover letters via `cover-letter-creator`
 - If `job_description_text` is present in the task: `job_description_text: {text}` — tells resume-tailor to use this content instead of fetching the URL
+- If `company_notes` is present in the task: include it as additional context about the company
 
 Wait for it to complete. Note the exact output YAML path it reports.
 
@@ -79,7 +81,7 @@ Use `resume_pdf` as the resume PDF path in the Step 7 report.
 
 ### 5. Run cover-letter-creator
 
-Spawn the `cover-letter-creator` agent with the job URL, the tailored resume path from step 3, and — if present in the task — the `job_description_text`. Include these instructions in the prompt:
+Spawn the `cover-letter-creator` agent with the job URL, the tailored resume path from step 3, and — if present in the task — the `job_description_text` and `company_notes`. Include these instructions in the prompt:
 
 > Write a cover letter for this job posting based on the tailored resume at `{resume_yaml_path}`.
 >

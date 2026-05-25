@@ -141,7 +141,15 @@ Note your own name in the team — workers will send messages to you using this 
 
 ### 7b. Create one task per job
 
-For each selected job, call `TaskCreate` with a description containing this JSON block (fill in actual values). Include `job_description_text` from the Step 4 DB query so workers can pass it directly to resume-tailor and cover-letter-creator without any additional fetching.
+Before creating tasks, look up any stored company intelligence for the selected companies:
+
+```sql
+SELECT name, remote_confirmed, canada_confirmed, notes
+FROM companies
+WHERE name IN ('{company1}', '{company2}', ...)
+```
+
+For each selected job, call `TaskCreate` with a description containing this JSON block (fill in actual values). Include `job_description_text` from the Step 4 DB query so workers can pass it directly to resume-tailor and cover-letter-creator without any additional fetching. Include `company_notes` from the companies table query above if a row exists for this company and its `notes` field is non-empty.
 
 ```json
 {
@@ -150,13 +158,14 @@ For each selected job, call `TaskCreate` with a description containing this JSON
   "title": "Principal Engineer",
   "output_dir": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}",
   "score": 87,
-  "job_description_text": "Full cleaned text of the job posting (up to 8000 chars)..."
+  "job_description_text": "Full cleaned text of the job posting (up to 8000 chars)...",
+  "company_notes": "Series B healthtech startup focused on FHIR interoperability, remote-first globally"
 }
 ```
 
 Sanitize company names for paths: replace spaces with underscores, strip special characters.
 
-If `job_description_text` is unavailable for a posting (scorer fetch failed), omit the field — the worker will handle the fallback.
+Omit `job_description_text` if unavailable (scorer fetch failed — worker handles the fallback). Omit `company_notes` if no companies table row exists for this company or the notes field is empty.
 
 ### 7c. Spawn workers
 

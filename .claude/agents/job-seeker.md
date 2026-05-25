@@ -64,7 +64,16 @@ Use ToolSearch with `query: "select:mcp__sqlite__create_table"` to load the tool
   selected_date TEXT, status TEXT DEFAULT 'new'
   ```
 
-If the table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
+Then create the **companies** table (cross-run company intelligence — persists research findings, remote/Canada confirmation, and last-seen date across pipeline runs):
+- **Table name**: `companies`
+- **Columns definition**:
+  ```
+  name TEXT PRIMARY KEY, remote_confirmed INTEGER DEFAULT 0,
+  canada_confirmed INTEGER DEFAULT 0, notes TEXT,
+  researched_date TEXT, last_seen_date TEXT
+  ```
+
+If either table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 
