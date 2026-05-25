@@ -6,7 +6,11 @@ from pathlib import Path
 
 
 def _repo_root() -> Path:
-    return Path(__file__).parent.parent
+    here = Path.cwd()
+    for parent in [here, *here.parents]:
+        if (parent / ".git").exists():
+            return parent
+    raise RuntimeError("Could not locate repo root (no .git found above cwd).")
 
 
 def get_db_path() -> Path:
