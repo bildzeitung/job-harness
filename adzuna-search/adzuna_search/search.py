@@ -1,12 +1,15 @@
 """Adzuna Canada job search."""
 
+import json
 import os
+from pathlib import Path
 
 import httpx
 
 BASE_URL = "https://api.adzuna.com/v1/api/jobs/ca/search/1"
 
-DEFAULT_QUERIES = [
+# Used only when candidate-summary.json is unavailable
+_FALLBACK_QUERIES = [
     "principal engineer remote",
     "staff engineer remote cloud",
     "cloud architect remote",
@@ -17,7 +20,7 @@ DEFAULT_QUERIES = [
     "healthcare FHIR engineer remote",
 ]
 
-SENIORITY_KEYWORDS = [
+_FALLBACK_SENIORITY = [
     "principal", "staff", "distinguished", "senior staff",
     "cloud architect", "platform engineer", "ai infrastructure",
     "ml infrastructure", "head of engineering", "senior software",
@@ -29,13 +32,32 @@ JUNIOR_KEYWORDS = ["junior", "intern", "entry level", "entry-level"]
 EXCLUDE_PHRASES = ["us only", "us citizens only", "must be located in us"]
 
 
+def load_candidate_summary() -> dict | None:
+    job_data_root = os.environ.get("JOB_DATA_ROOT")
+    if not job_data_root:
+        return None
+    path = Path(job_data_root) / "candidate-summary.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def queries_from_summary(summary: dict) -> list[str]:
+    return [f"{title} remote" for title in summary.get("target_titles", [])]
+
+
+def seniority_keywords_from_summary(summary: dict) -> list[str]:
+    return [kw.lower() for kw in summary.get("seniority_keywords", [])]
+
+
 def _is_remote(text: str) -> bool:
     return "remote" in text.lower()
 
 
-def _is_senior(title: str) -> bool:
+def _is_senior(title: str, seniority_keywords: list[str]) -> bool:
     t = title.lower()
-    return any(kw in t for kw in SENIORITY_KEYWORDS)
+    return any(kw in t for kw in seniority_keywords)
 
 
 def _is_junior(title: str) -> bool:
@@ -55,13 +77,16 @@ def search(
 ) -> list[dict]:
     app_id = os.environ["ADZUNA_APP_ID"]
     app_key = os.environ["ADZUNA_API_KEY"]
-    queries = queries or DEFAULT_QUERIES
+
+    summary = load_candidate_summary()
+    effective_queries = queries or (queries_from_summary(summary) if summary else _FALLBACK_QUERIES)
+    seniority_keywords = seniority_keywords_from_summary(summary) if summary else _FALLBACK_SENIORITY
 
     seen: set[str] = set()
     results: list[dict] = []
 
     with httpx.Client(timeout=timeout) as client:
-        for q in queries:
+        for q in effective_queries:
             try:
                 resp = client.get(BASE_URL, params={
                     "app_id": app_id,
@@ -87,7 +112,7 @@ def search(
 
                 if not _is_remote(combined):
                     continue
-                if not _is_senior(title):
+                if not _is_senior(title, seniority_keywords):
                     continue
                 if _is_junior(title):
                     continue
