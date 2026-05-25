@@ -2,6 +2,10 @@
 
 The harness uses a single SQLite database at `$JOB_DATA_ROOT/jobs/postings.db`.
 
+Two tables:
+- **`postings`** — one row per job posting URL; tracks the full scoring/selection/application lifecycle.
+- **`companies`** — one row per hiring company; persists research findings and remote/Canada confirmation across pipeline runs.
+
 ## Table: `postings`
 
 One row per job posting URL. The URL is the natural primary key — duplicate inserts are silently ignored (`INSERT OR IGNORE`).
@@ -128,3 +132,54 @@ The `modifier` field is the sum of three independent adjustments:
 | 101–200 | −5 |
 | > 200 | −10 |
 | Unknown | 0 |
+
+---
+
+## Table: `companies`
+
+One row per hiring company name. Written by `job-seeker-research` (with full notes) and updated by `job-scorer` (flags + last-seen date) on every pipeline run. Read by `job-preparer` when assembling task context for workers.
+
+```sql
+CREATE TABLE companies (
+    name               TEXT     PRIMARY KEY,
+    remote_confirmed   INTEGER  DEFAULT 0,
+    canada_confirmed   INTEGER  DEFAULT 0,
+    notes              TEXT,
+    researched_date    TEXT,
+    last_seen_date     TEXT
+)
+```
+
+### Columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `name` | TEXT PK | Company name as it appears in job postings. Primary key. |
+| `remote_confirmed` | INTEGER | `1` if any verified posting or research confirmed the company offers fully remote work; `0` otherwise. Never downgraded — once confirmed, stays confirmed. |
+| `canada_confirmed` | INTEGER | `1` if any verified posting or research confirmed Canada-eligibility; `0` otherwise. Never downgraded. |
+| `notes` | TEXT | 1–2 sentence research summary: funding stage, domain focus, team size, hiring signals. Written by `job-seeker-research`; preserved on subsequent upserts if non-empty. |
+| `researched_date` | TEXT | ISO 8601 date `job-seeker-research` last wrote a notes entry for this company. |
+| `last_seen_date` | TEXT | ISO 8601 date any pipeline agent last encountered a posting from this company. Updated by `job-scorer` on every scoring run. |
+
+### Writers and flag promotion rules
+
+| Agent | What it writes | Conflict rule |
+|-------|---------------|---------------|
+| `job-seeker-research` | All fields; `remote_confirmed = 1`, `canada_confirmed = 1`, `notes` | Overwrites flags to 1; preserves existing notes if new notes are empty |
+| `job-scorer` | `remote_confirmed`, `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags can only increase (0→1), never decrease (1→0) |
+
+### How `remote_confirmed` / `canada_confirmed` are set by the scorer
+
+The scorer's `remote_canada_confirmed` dimension is scored 1–10. If that dimension score is **≥ 8**, the posting explicitly states remote + Canada eligibility and both flags are set to `1` on upsert. Below 8, both are set to `0` in the upsert, but `MAX()` ensures an existing `1` is never overwritten.
+
+### How `company_notes` flows to cover letters
+
+```
+job-seeker-research  →  companies.notes
+                               ↓
+job-preparer  (SELECT notes FROM companies WHERE name IN (...))
+                               ↓
+TaskCreate.description  (company_notes field)
+                               ↓
+job-pipeline-worker  →  resume-tailor prompt + cover-letter-creator prompt
+```

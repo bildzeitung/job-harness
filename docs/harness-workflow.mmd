@@ -6,7 +6,7 @@ flowchart TD
 
     %% ─── STAGE 1: SEEK ───────────────────────────────────────────────────────
     subgraph SEEK ["STAGE 1 — SEEK"]
-        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator\n① Generate candidate-summary.json  (cached per day)\n② Init SQLite schema  (CREATE TABLE IF NOT EXISTS)\n③ MCP connectivity probe  (LinkedIn · Gmail · Indeed · ZipRecruiter)"]
+        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator\n① Generate candidate-summary.json  (cached per day)\n② Init SQLite schema  (postings + companies tables)\n③ MCP connectivity probe  (LinkedIn · Gmail · Indeed · ZipRecruiter)"]
 
         SUB_LI["job-seeker-linkedin\nLinkedIn MCP"]
         SUB_EM["job-seeker-email\nGmail MCP"]
@@ -14,7 +14,7 @@ flowchart TD
         SUB_ZIP["job-seeker-ziprecruiter\nZipRecruiter MCP"]
         SUB_ADZ["job-seeker-adzuna\nAdzuna Canada REST API"]
         SUB_GH["job-seeker-greenhouse\nGreenhouse · Lever public APIs"]
-        SUB_RES["job-seeker-research\nWellfound · Ashby · funded startups"]
+        SUB_RES["job-seeker-research\nWellfound · Ashby · funded startups\n→ UPSERT companies (notes · remote/Canada confirmed)"]
 
         S_DONE["Merge results  ·  deduplicate against existing DB URLs\nAudit log → jobs/search-YYYY-MM-DD.json\nINSERT OR IGNORE into DB  (status = 'new')"]
 
@@ -27,14 +27,14 @@ flowchart TD
     EMAIL_ONLY["job-seeker-email  (standalone)\nReads most-recent LinkedIn job-alert from Gmail\nExtracts postings · labels thread 'AI'\nINSERT OR IGNORE into DB  (status = 'new')"]
 
     %% ─── Persistent store ────────────────────────────────────────────────────
-    DB[("SQLite DB\npostings")]
+    DB[("SQLite DB\npostings · companies")]
 
     %% ─── STAGE 2: SCORE ──────────────────────────────────────────────────────
     subgraph SCORE ["STAGE 2 — SCORE  (job-preparer · Sonnet)"]
         SC1["Query DB\nWHERE status = 'new'  OR  (status = 'scored' AND scored_date < 7 days ago)"]
         SC2["Pre-filter\n① Hard disqualifiers → UPDATE status = 'skipped'\n   (US-only · on-site only · intern · entry-level · relocation required)\n② Soft skill mismatch → excluded this run  (status unchanged, re-evaluated next run)"]
         SC3["Write scoring-batch-N.json  (≤ 20 postings per file)\nDelete stale batch files first"]
-        SC4["scoring_module  (Python · Claude API · threaded · prompt-cached)\n\nPer posting:\n  · WebFetch full JD text  (skipped if jd_text already in DB)\n  · Score 5 dimensions  →  weighted base score  (× 10 = 1–100)\n      tech fit 35%  ·  seniority match 25%  ·  domain fit 20%\n      remote/Canada confirmed 10%  ·  role clarity 10%\n  · Disqualifier modifiers:\n      requires named certification −40  ·  US-only −25  ·  relocation required −30\n  · Freshness modifiers:  ≤3 days +8  ·  4–7 days +4  ·  15–30 days −5  ·  >30 days −12\n  · Applicant modifiers:  <25 +5  ·  101–200 −5  ·  >200 −10\n  · final_score = clamp(base_score + modifier, 1, 100)\n  · UPDATE DB: base_score · modifier · final_score · job_description_text · status = 'scored'"]
+        SC4["scoring_module  (Python · Claude API · threaded · prompt-cached)\n\nPer posting:\n  · WebFetch full JD text  (skipped if jd_text already in DB)\n  · Score 5 dimensions  →  weighted base score  (× 10 = 1–100)\n      tech fit 35%  ·  seniority match 25%  ·  domain fit 20%\n      remote/Canada confirmed 10%  ·  role clarity 10%\n  · Disqualifier modifiers:\n      requires named certification −40  ·  US-only −25  ·  relocation required −30\n  · Freshness modifiers:  ≤3 days +8  ·  4–7 days +4  ·  15–30 days −5  ·  >30 days −12\n  · Applicant modifiers:  <25 +5  ·  101–200 −5  ·  >200 −10\n  · final_score = clamp(base_score + modifier, 1, 100)\n  · UPDATE postings: scores · job_description_text · status = 'scored'\n  · UPSERT companies: last_seen_date · remote/canada flags  (MAX — never downgrade)"]
         SC1 --> SC2 --> SC3 --> SC4
     end
 
@@ -48,7 +48,7 @@ flowchart TD
 
     %% ─── STAGE 4: PREPARE ────────────────────────────────────────────────────
     subgraph PREPARE ["STAGE 4 — PREPARE  (job-preparer orchestrates  ·  job-pipeline-worker × N)"]
-        PR1["TeamCreate:  job-prep-YYYY-MM-DD\nTaskCreate × N per job\n(url · company · title · output_dir · score · job_description_text)"]
+        PR1["TeamCreate:  job-prep-YYYY-MM-DD\nQuery companies WHERE name IN (selected companies)\nTaskCreate × N per job\n(url · company · title · output_dir · score · job_description_text · company_notes)"]
         PR2["Spawn job-pipeline-worker × N  (Sonnet · all in parallel · max 5)"]
 
         subgraph WLOOP ["Per Worker — work loop  (repeats until no unclaimed tasks remain)"]
@@ -82,8 +82,10 @@ flowchart TD
     %% ─── DB read/write connections ───────────────────────────────────────────
     S_DONE     -.->|"INSERT  status='new'"| DB
     EMAIL_ONLY -.->|"INSERT  status='new'"| DB
-    DB         -.->|"read"| SC1
-    SC4        -.->|"UPDATE  status='scored'"| DB
+    SUB_RES    -.->|"UPSERT companies"| DB
+    DB         -.->|"read postings"| SC1
+    DB         -.->|"read companies"| PR1
+    SC4        -.->|"UPDATE status='scored' · UPSERT companies"| DB
     SEL3       -.->|"UPDATE  status='selected'"| DB
     W6         -.->|"UPDATE  status='applied'"| DB
 
