@@ -45,8 +45,12 @@ class JobViewerApp(App):
     def on_mount(self) -> None:
         from tui.db import get_postings, make_engine
 
-        engine = make_engine(self.db_path)
-        self._postings = get_postings(engine)
+        try:
+            engine = make_engine(self.db_path)
+            self._postings = get_postings(engine)
+        except Exception as e:
+            self.exit(f"Error reading database: {e}")
+            return
 
         table = self.query_one("#jobs-table", DataTable)
         job_width = max(20, self.size.width - _DATE_WIDTH - _STATE_WIDTH - _COL_PADDING)
@@ -55,11 +59,11 @@ class JobViewerApp(App):
         table.add_column("State", width=_STATE_WIDTH)
 
         for posting in self._postings:
-            style = STATE_STYLES.get(posting.status or "new", "white")
+            status = posting.status or "new"
             table.add_row(
                 posting.display_name,
                 posting.display_date,
-                Text(posting.status or "—", style=style),
+                Text(status, style=STATE_STYLES.get(status, "white")),
                 key=posting.url,
             )
 
@@ -98,9 +102,10 @@ class JobViewerApp(App):
         lines: list[str] = []
         if posting.final_score is not None:
             modifier = posting.modifier or 0
+            base = posting.base_score if posting.base_score is not None else "?"
             lines.append(
                 f"Score:    {posting.final_score}"
-                f"  (base {posting.base_score}, modifier {modifier:+d})"
+                f"  (base {base}, modifier {modifier:+d})"
             )
         lines.append(f"Platform: {posting.platform or '—'}")
         lines.append(f"Location: {posting.location_note or '—'}")

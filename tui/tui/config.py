@@ -18,7 +18,10 @@ def get_db_path() -> Path:
     if not job_data_root:
         settings = _repo_root() / ".claude" / "settings.local.json"
         if settings.exists():
-            data = json.loads(settings.read_text())
+            try:
+                data = json.loads(settings.read_text())
+            except ValueError as e:
+                raise RuntimeError(f"Malformed {settings}: {e}") from e
             job_data_root = data.get("env", {}).get("JOB_DATA_ROOT")
     if not job_data_root:
         raise RuntimeError(
