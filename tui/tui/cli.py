@@ -17,7 +17,12 @@ def main(
     from tui.app import JobViewerApp
     from tui.config import get_db_path
 
-    db_path = db or get_db_path()
+    try:
+        db_path = db or get_db_path()
+    except RuntimeError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
     if not db_path.exists():
         typer.echo(f"Database not found: {db_path}", err=True)
         raise typer.Exit(1)
