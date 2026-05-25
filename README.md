@@ -19,17 +19,20 @@ An AI harness that searches for jobs. Currently, it searches:
 ## Setup
 
 * run: `init.sh`
+* also, `mkdir ~/job-data` (this is your job search directory)
 
 ## Configure
+
+There is some local configuration required.
 
 Update `.claude/settings.local.json` with:
 
 ```json
   "env": {
-    "RESUME_FILE": "<path to resume.yaml>",
+    "RESUME_FILE": "<full path to resume.yaml>",
     "ADZUNA_APP_ID": "<your id>",
     "ADZUNA_API_KEY": "<your key>",
-    "JOB_DATA_ROOT": "/<path to>/<job-data>"
+    "JOB_DATA_ROOT": "/<your path to>/job-data"
   }
 ```
 
@@ -37,14 +40,26 @@ Update `.claude/settings.local.json` with:
 
 ## Usage
 
+### Your Resume
+
+The input YAML resume that this harness expects is in [RenderCV format](https://github.com/rendercv/rendercv).
+This tool does a create job of creating a formatted resume so that you can
+concentrate on the content instead. Once you have created your YAML resume, you
+can use this harness. 
+
 ### Agents
 
 The top-line is: `/job-search`. This runs the full harness and allows for job listing source selection.
 
-Additionally,
+### Job Database UI
+
+You may want to explore the collected data yourself. For that, there is a TUI:
 
 ```bash
 . ./venv/bin/activate && job-tui
 ```
 
-will invoke a text user interface that will show you the current state of the job posting database.
+This application presents a list of job postings that the harness has
+collected, along with their status. Pressing `Enter` opens an expanded
+window that displays additional details.
+
