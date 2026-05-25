@@ -113,6 +113,14 @@ def _fetch_jd(url: str) -> str | None:
     return None
 
 
+def _parse_json_response(text: str) -> dict[str, Any]:
+    """Parse JSON from model response, stripping markdown code fences if present."""
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    stripped = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
+    stripped = re.sub(r"\s*```$", "", stripped.strip())
+    return json.loads(stripped.strip())
+
+
 def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str, Any]:
     url = posting.get("url", "")
     title = posting.get("title", "")
@@ -140,7 +148,7 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
     )
 
     try:
-        scored = json.loads(resp.content[0].text)
+        scored = _parse_json_response(resp.content[0].text)
     except (json.JSONDecodeError, IndexError, AttributeError):
         scored = {
             "dimension_scores": {k: 5 for k in
