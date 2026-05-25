@@ -66,37 +66,47 @@ Use ToolSearch with `query: "select:mcp__sqlite__create_table"` to load the tool
 
 If the table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
 
+## Step 0c: Load Sources Configuration
+
+Read `$JOB_DATA_ROOT/jobs/sources-config.json`. This file is written by the job-search skill before spawning this agent and lists which sources are active for this run.
+
+If the file exists: parse its `enabled` array and store as `enabled_sources`.
+If the file does not exist or cannot be read: default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "email", "research"]`.
+
+Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
+
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 
 Before spawning any agents, probe each session-dependent MCP server using the **actual tools sub-agents will call** — not proxy endpoints. A tool appearing in ToolSearch is not enough (Docker-based MCPs can be schema-registered but disconnected). More critically, LinkedIn and Gmail can be partially functional: profile/label endpoints may respond while job search and thread endpoints do not. Probing a proxy endpoint masks this failure and causes sub-agents to produce 0 results.
 
-Execute the following checklist. You are done if each and every item is successfully completed:
+Execute the following checklist. Skip any item whose source is not in `enabled_sources` — mark it as **disabled** in the results table.
 
 Use ToolSearch to load the LinkedIn and Gmail search tools into this session: `query: "select:mcp__linkedin__search_jobs,mcp__claude_ai_Gmail__search_threads"`
 
-- [ ] **LinkedIn probe:** If `mcp__linkedin__search_jobs` was **not returned** by ToolSearch, mark LinkedIn as **unavailable** immediately (the tool is not registered in this session). Otherwise call `mcp__linkedin__search_jobs` with a minimal test query (e.g. `keywords: "principal engineer"`) and discard results. ToolSearch returned the schema AND call succeeds → mark LinkedIn as **available**. Otherwise, mark LinkedIn as **unavailable**
+- [ ] **LinkedIn probe:** Skip if `linkedin` not in `enabled_sources` (mark **disabled**). If `mcp__linkedin__search_jobs` was **not returned** by ToolSearch, mark LinkedIn as **unavailable** immediately (the tool is not registered in this session). Otherwise call `mcp__linkedin__search_jobs` with a minimal test query (e.g. `keywords: "principal engineer"`) and discard results. ToolSearch returned the schema AND call succeeds → mark LinkedIn as **available**. Otherwise, mark LinkedIn as **unavailable**
 
-- [ ] **Gmail probe:** If `mcp__claude_ai_Gmail__search_threads` was **not returned** by ToolSearch, mark Gmail as **unavailable** immediately. Otherwise call `mcp__claude_ai_Gmail__search_threads` with `query: "from:jobalerts-noreply@linkedin.com"` and discard results. ToolSearch returned the schema AND call succeeds → mark Gmail as **available**. Otherwise, mark Gmail as **unavailable**
+- [ ] **Gmail probe:** Skip if `email` not in `enabled_sources` (mark **disabled**). If `mcp__claude_ai_Gmail__search_threads` was **not returned** by ToolSearch, mark Gmail as **unavailable** immediately. Otherwise call `mcp__claude_ai_Gmail__search_threads` with `query: "from:jobalerts-noreply@linkedin.com"` and discard results. ToolSearch returned the schema AND call succeeds → mark Gmail as **available**. Otherwise, mark Gmail as **unavailable**
 
-- [ ] **Indeed probe:** Call `mcp__claude_ai_Indeed__search_jobs` with `search: "engineer", country_code: "CA", location: "remote"`. Discard the results — connectivity test only. Success → mark Indeed as **available**. Otherwise mark Indeed as **unavailable**.
+- [ ] **Indeed probe:** Skip if `indeed` not in `enabled_sources` (mark **disabled**). Call `mcp__claude_ai_Indeed__search_jobs` with `search: "engineer", country_code: "CA", location: "remote"`. Discard the results — connectivity test only. Success → mark Indeed as **available**. Otherwise mark Indeed as **unavailable**.
 
-- [ ] **ZipRecruiter probe:** Call `mcp__claude_ai_ZipRecruiter__search_jobs` with `query: "engineer", location_types: ["REMOTE"]`. Discard the results — connectivity test only. Success → mark ZipRecruiter as **available**. Otherwise mark ZipRecruiter as **unavailable**.
+- [ ] **ZipRecruiter probe:** Skip if `ziprecruiter` not in `enabled_sources` (mark **disabled**). Call `mcp__claude_ai_ZipRecruiter__search_jobs` with `query: "engineer", location_types: ["REMOTE"]`. Discard the results — connectivity test only. Success → mark ZipRecruiter as **available**. Otherwise mark ZipRecruiter as **unavailable**.
 
-Print the results of this checklist in a table. Stop the pipeline if any items are marked **unavailable**.
+Print the results of this checklist in a table. Stop the pipeline if any items are marked **unavailable** (disabled sources do not count as unavailable).
 
 ## Step 2: Spawn Platform Searchers in Parallel
 
-In a single message, spawn all available sub-agents at the same time using the Agent tool. Always spawn these three (they use no MCP servers):
+In a single message, spawn all eligible sub-agents at the same time using the Agent tool.
 
-- `subagent_type: job-seeker-adzuna` — searches Adzuna via the Adzuna Canada REST API
-- `subagent_type: job-seeker-greenhouse` — searches Greenhouse.io and Lever.co via their public APIs
-- `subagent_type: job-seeker-research` — finds companies hiring on Wellfound, Ashby, funded startups, and niche boards
+No-MCP sources — spawn only if in `enabled_sources`:
+- `subagent_type: job-seeker-adzuna` — if `adzuna` in `enabled_sources`
+- `subagent_type: job-seeker-greenhouse` — if `greenhouse` in `enabled_sources`
+- `subagent_type: job-seeker-research` — if `research` in `enabled_sources`
 
-Additionally spawn if the probe succeeded:
-- `subagent_type: job-seeker-linkedin` — only if LinkedIn probe succeeded
-- `subagent_type: job-seeker-email` — only if Gmail probe succeeded
-- `subagent_type: job-seeker-indeed` — only if Indeed probe succeeded
-- `subagent_type: job-seeker-ziprecruiter` — only if ZipRecruiter probe succeeded
+MCP-dependent sources — spawn only if in `enabled_sources` **and** the probe succeeded:
+- `subagent_type: job-seeker-linkedin` — if `linkedin` in `enabled_sources` and LinkedIn probe succeeded
+- `subagent_type: job-seeker-email` — if `email` in `enabled_sources` and Gmail probe succeeded
+- `subagent_type: job-seeker-indeed` — if `indeed` in `enabled_sources` and Indeed probe succeeded
+- `subagent_type: job-seeker-ziprecruiter` — if `ziprecruiter` in `enabled_sources` and ZipRecruiter probe succeeded
 
 Each agent writes its own temp file:
 - `job-data/jobs/linkedin-{YYYY-MM-DD}.json` (if spawned)
