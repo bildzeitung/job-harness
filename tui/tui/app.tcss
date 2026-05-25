@@ -1,0 +1,24 @@
+Screen {
+    layout: vertical;
+}
+
+#main {
+    height: 1fr;
+    layout: vertical;
+}
+
+#jobs-table {
+    height: 1fr;
+}
+
+#details-panel {
+    height: 14;
+    border-top: solid $primary;
+    background: $surface;
+    padding: 0 1;
+}
+
+#details-content {
+    color: $text;
+    padding: 0;
+}
