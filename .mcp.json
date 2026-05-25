@@ -10,15 +10,8 @@
       ]
     },
     "sqlite": {
-      "command": "wsl.exe",
-      "args": [
-	"docker",
-        "run", "--rm", "-i",
-        "-v", "/home/dmklein/mcp-sqlite:/mcp",
-        "mcp/sqlite",
-        "--db-path",
-        "/mcp/job-search.db"
-      ]
+      "command": "bash",
+      "args": ["./scripts/sqlite-mcp.sh"]
     }
   }
 }
