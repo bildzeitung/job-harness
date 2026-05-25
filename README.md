@@ -6,6 +6,7 @@ An AI harness that searches for jobs. Currently, it searches:
 * Indeed
 * Adzuna
 * ZipRecruiter
+* Greenhouse
 * GMail emails from LinkedIn Job Alerts
 * .. random sites on the internets ..
 
