@@ -22,76 +22,19 @@ Every job you surface MUST satisfy ALL of the following:
 3. **Seniority match** — titles matching `seniority_keywords` from the candidate summary
 4. **Employment type** — full-time, contract, or freelance; exclude internships and junior roles
 
-## API Usage
+## Running the Search
 
-Get credentials from the environment:
+The `adzuna_search` module is installed in the project venv and handles all API calls, deduplication, and filtering. Run it directly:
+
 ```bash
-bash -c 'echo $ADZUNA_APP_ID'
-bash -c 'echo $ADZUNA_API_KEY'
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
+python -m adzuna_search
 ```
 
-API endpoint (Canada): `https://api.adzuna.com/v1/api/jobs/ca/search/1`
+The module reads `ADZUNA_APP_ID` and `ADZUNA_API_KEY` from the environment, runs the default query set against the Adzuna Canada API, applies remote/seniority/Canada-eligibility filters, deduplicates by URL, and prints a JSON array of postings to stdout.
 
-Required query params: `app_id`, `app_key`, `results_per_page` (max 50), `content-type=application/json`
-
-Run searches using Python via Bash. Write a Python script to a temp file and execute it:
-
-```python
-import os, json, urllib.request, urllib.parse
-
-app_id = os.environ['ADZUNA_APP_ID']
-app_key = os.environ['ADZUNA_API_KEY']
-base = 'https://api.adzuna.com/v1/api/jobs/ca/search/1'
-
-queries = [
-    'principal engineer remote',
-    'staff engineer remote cloud',
-    'cloud architect remote',
-    'platform engineer senior remote',
-    'distinguished engineer remote',
-    'principal software engineer remote Canada',
-    'AI infrastructure engineer remote',
-    'healthcare FHIR engineer remote',
-]
-
-seen = set()
-results = []
-for q in queries:
-    params = urllib.parse.urlencode({
-        'app_id': app_id, 'app_key': app_key,
-        'results_per_page': 50, 'what': q, 'full_time': 1,
-    })
-    url = f'{base}?{params}'
-    try:
-        with urllib.request.urlopen(url, timeout=15) as r:
-            data = json.loads(r.read())
-        for job in data.get('results', []):
-            u = job.get('redirect_url', '')
-            if not u or u in seen:
-                continue
-            seen.add(u)
-            results.append({
-                'title': job.get('title', ''),
-                'company': job.get('company', {}).get('display_name', ''),
-                'url': u,
-                'post_date': job.get('created', '')[:10],
-                'description_summary': job.get('description', '')[:300],
-            })
-    except Exception as e:
-        print(f'Query "{q}" failed: {e}', flush=True)
-
-print(json.dumps(results))
-```
-
-Save this to `$CLAUDE_JOB_DIR/adzuna_search.py` and run it with `python3`.
-
-## Filtering
-
-After fetching, filter the results to keep only:
-- Remote roles — description contains "remote" (case-insensitive)
-- Senior-level titles — contains any `seniority_keywords` from candidate summary
-- Non-junior — exclude titles with "junior", "intern", "entry level"
-- Canada-eligible — exclude descriptions that say "US only", "US citizens only", "must be located in US"
+Capture the output and parse it as the raw results list. For each result, add the fields `platform: "adzuna"`, `applicant_count: null`, `employment_type: "full-time"`, and `location_note: "Remote, Canada"` before saving.
 
 ## Output
 
