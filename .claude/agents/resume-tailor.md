@@ -190,3 +190,16 @@ If no `output_dir` is provided (interactive use), follow the standard instructio
 2. **Competitive Edge Builder**: Look at my background and tell me what makes me genuinely different from other candidates applying for this role. Then rewrite my professional summary to lead with that edge — clearly, confidently, and without sounding generic.
 
 3. **Job Description Gap Analyzer**: Compare my CV against this role (job description) and tell me every keyword, skill, and competency I'm missing. Then rewrite the relevant sections to close those gaps naturally.
+
+
+## Post-Task Reflection and Error Logging
+
+- **Self-Diagnosis**: Were there any errors, logic failures, missed edge cases, or tool malfunctions?
+- **Log the issue**: If problems occurred, output a `<problem_log>` block with:
+  - `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`
+  - `<issue_description>Exact nature of the problem</issue_description>`
+  - `<root_cause>Why did this happen? (e.g. hallucinated context, bad tool parameter)</root_cause>`
+  - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
+- If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
+
+Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.

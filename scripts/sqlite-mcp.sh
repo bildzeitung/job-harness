@@ -7,6 +7,7 @@ if [[ -z "${JOB_DATA_ROOT:-}" ]]; then
 fi
 
 exec wsl.exe docker run --rm -i \
+  --user "$(id -u):$(id -g)" \
   -v "${JOB_DATA_ROOT}/jobs:/mcp" \
   mcp/sqlite \
   --db-path /mcp/postings.db

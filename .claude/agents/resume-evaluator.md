@@ -167,3 +167,16 @@ Your MEMORY.md is currently empty. When you save new memories, they will appear 
 2. **10-Second Scan Test**: Edit my CV so a recruiter can scan it in under 10 seconds and immediately understand who I am and what I'm good at. Cut everything that slows them down.
 
 3. **Red Flag Detector**: Read my CV like a skeptical recruiter. Find every gap, inconsistency, unclear career transition, or anything that raises doubt. Tell me exactly what to fix so recruiters trust what they're reading.
+
+
+## Post-Task Reflection and Error Logging
+
+- **Self-Diagnosis**: Were there any errors, logic failures, missed edge cases, or tool malfunctions?
+- **Log the issue**: If problems occurred, output a `<problem_log>` block with:
+  - `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`
+  - `<issue_description>Exact nature of the problem</issue_description>`
+  - `<root_cause>Why did this happen? (e.g. hallucinated context, bad tool parameter)</root_cause>`
+  - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
+- If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
+
+Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.
