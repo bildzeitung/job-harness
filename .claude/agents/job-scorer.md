@@ -106,6 +106,19 @@ Read the batch file. For each posting in the array:
 
    If the row does not exist (posting came from outside the normal seeker flow), the UPDATE affects 0 rows — that is acceptable.
 
+4b. Upsert the company row. If `remote_canada_confirmed` dimension score ≥ 8, set both flags to 1 (the posting explicitly confirms remote + Canada); otherwise set both to 0 (do not downgrade an existing confirmed row — `MAX()` handles this). Escape single quotes in company name by doubling them.
+
+   ```sql
+   INSERT INTO companies (name, remote_confirmed, canada_confirmed, last_seen_date)
+   VALUES ('{company}', {rc_flag}, {cc_flag}, '{YYYY-MM-DD}')
+   ON CONFLICT(name) DO UPDATE SET
+     remote_confirmed = MAX(remote_confirmed, excluded.remote_confirmed),
+     canada_confirmed = MAX(canada_confirmed, excluded.canada_confirmed),
+     last_seen_date   = excluded.last_seen_date
+   ```
+
+   Where `rc_flag` and `cc_flag` are each `1` if `remote_canada_confirmed >= 8`, else `0`.
+
 5. Print: `[SCORED] {Company} — {Title}: {final_score}/100`
 
 Report format:
