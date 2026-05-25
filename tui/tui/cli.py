@@ -27,4 +27,7 @@ def main(
         typer.echo(f"Database not found: {db_path}", err=True)
         raise typer.Exit(1)
 
-    JobViewerApp(db_path=db_path).run()
+    result = JobViewerApp(db_path=db_path).run()
+    if isinstance(result, str):
+        typer.echo(result, err=True)
+        raise typer.Exit(1)
