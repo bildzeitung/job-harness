@@ -8,47 +8,28 @@ import httpx
 
 BASE_URL = "https://api.adzuna.com/v1/api/jobs/ca/search/1"
 
-# Used only when candidate-summary.json is unavailable
-_FALLBACK_QUERIES = [
-    "principal engineer remote",
-    "staff engineer remote cloud",
-    "cloud architect remote",
-    "platform engineer senior remote",
-    "distinguished engineer remote",
-    "principal software engineer remote Canada",
-    "AI infrastructure engineer remote",
-    "healthcare FHIR engineer remote",
-]
-
-_FALLBACK_SENIORITY = [
-    "principal", "staff", "distinguished", "senior staff",
-    "cloud architect", "platform engineer", "ai infrastructure",
-    "ml infrastructure", "head of engineering", "senior software",
-    "staff software",
-]
-
 JUNIOR_KEYWORDS = ["junior", "intern", "entry level", "entry-level"]
 
 EXCLUDE_PHRASES = ["us only", "us citizens only", "must be located in us"]
 
 
-def load_candidate_summary() -> dict | None:
+def load_candidate_summary() -> dict:
     job_data_root = os.environ.get("JOB_DATA_ROOT")
     if not job_data_root:
-        return None
+        raise RuntimeError("JOB_DATA_ROOT is not set")
     path = Path(job_data_root) / "candidate-summary.json"
     if not path.exists():
-        return None
+        raise FileNotFoundError(f"candidate-summary.json not found at {path}")
     with open(path) as f:
         return json.load(f)
 
 
 def queries_from_summary(summary: dict) -> list[str]:
-    return [f"{title} remote" for title in summary.get("target_titles", [])]
+    return [f"{title} remote" for title in summary["target_titles"]]
 
 
 def seniority_keywords_from_summary(summary: dict) -> list[str]:
-    return [kw.lower() for kw in summary.get("seniority_keywords", [])]
+    return [kw.lower() for kw in summary["seniority_keywords"]]
 
 
 def _is_remote(text: str) -> bool:
@@ -79,8 +60,8 @@ def search(
     app_key = os.environ["ADZUNA_API_KEY"]
 
     summary = load_candidate_summary()
-    effective_queries = queries or (queries_from_summary(summary) if summary else _FALLBACK_QUERIES)
-    seniority_keywords = seniority_keywords_from_summary(summary) if summary else _FALLBACK_SENIORITY
+    effective_queries = queries or queries_from_summary(summary)
+    seniority_keywords = seniority_keywords_from_summary(summary)
 
     seen: set[str] = set()
     results: list[dict] = []
