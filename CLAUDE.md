@@ -45,14 +45,14 @@ Twelve agents are configured in [.claude/agents/](.claude/agents/):
 - **cover-letter-creator** — Writes a cover letter from the CV + a job description.
 
 **Job search harness agents** (see `harness/` for diagram and data):
-- **job-seeker** — Orchestrator: spawns seven platform searchers in parallel, merges results, deduplicates against the SQLite DB, inserts new postings, saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`.
+- **job-seeker** — Orchestrator: spawns six platform searchers in parallel, merges results, deduplicates against the SQLite DB, inserts new postings, saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`.
 - **job-seeker-linkedin** — Searches LinkedIn via the LinkedIn MCP server (`mcp__linkedin__search_jobs`).
-- **job-seeker-indeed** — Searches Indeed via WebSearch.
+- **job-seeker-indeed** — Searches Indeed via the Indeed MCP server.
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
-- **job-seeker-email** — Reads the most recent LinkedIn job alert email from Gmail (`jobalerts-noreply@linkedin.com`), extracts postings, and labels the email with `AI`. Requires Gmail MCP OAuth.
+- **job-seeker-email** — Reads the most recent LinkedIn job alert email from Gmail (`jobalerts-noreply@linkedin.com`), extracts postings, and labels the email with `AI`. Requires Gmail MCP OAuth. Use via `/job-search-email` skill — not part of the main pipeline.
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-scorer** — Scores a single job posting 1–100 against the CV. Saves reports to `job-data/jobs/reports/`.
-- **job-preparer** — Team lead: scores all postings, selects top 5 (min score 75), creates an agent team, assigns one task per job, monitors workers, tears down the team when done. Writes a final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`.
+- **job-preparer** — Team lead: scores all postings, presents top 5 (min score 75) to the user for selection, creates an agent team, assigns one task per selected job, monitors workers, tears down the team when done. Writes a final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`.
 - **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF → cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.
 
 CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `model: opus`. Pipeline agents use `model: sonnet`.
@@ -74,8 +74,8 @@ CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `mod
 **Cover letter:** Spawn the `cover-letter-creator` agent with the job description.
 
 **Full job search run:**
-1. Spawn `job-seeker` — searches LinkedIn + Indeed + Adzuna + ZipRecruiter + Greenhouse/Lever + Gmail alerts + non-job-board research in parallel, finds 50–90 fresh postings, inserts into SQLite DB, saves audit log to `job-data/jobs/`
-2. Spawn `job-preparer` — queries the SQLite DB directly (no file argument), scores, ranks, and prepares tailored resume + cover letter PDFs for the top 5 (min score 75); writes `job-data/output/YYYY-MM-DD/final-report.md` with full URLs
+1. Spawn `job-seeker` — searches LinkedIn + Indeed + Adzuna + ZipRecruiter + Greenhouse/Lever + non-job-board research in parallel, finds 50–90 fresh postings, inserts into SQLite DB, saves audit log to `job-data/jobs/`
+2. Spawn `job-preparer` — queries the SQLite DB directly (no file argument), scores, ranks, presents top 5 (min score 75) to the user for selection, then prepares tailored resume + cover letter PDFs for user-selected jobs; writes `job-data/output/YYYY-MM-DD/final-report.md` with full URLs
 
 ## CV Structure
 

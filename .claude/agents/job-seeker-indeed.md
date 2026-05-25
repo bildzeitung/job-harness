@@ -78,3 +78,16 @@ Save results to `$JOB_DATA_ROOT/jobs/indeed-{YYYY-MM-DD}.json` (today's date):
 Use `null` for `post_date` or `applicant_count` when not available.
 
 After saving, print: `[INDEED] Found {N} postings — saved to {path}`
+
+
+## Post-Task Reflection and Error Logging
+
+- **Self-Diagnosis**: Were there any errors, logic failures, missed edge cases, or tool malfunctions?
+- **Log the issue**: If problems occurred, output a `<problem_log>` block with:
+  - `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`
+  - `<issue_description>Exact nature of the problem</issue_description>`
+  - `<root_cause>Why did this happen? (e.g. hallucinated context, bad tool parameter)</root_cause>`
+  - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
+- If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
+
+Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.

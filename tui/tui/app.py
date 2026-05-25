@@ -25,6 +25,7 @@ class JobViewerApp(App):
     CSS_PATH = "app.tcss"
     BINDINGS = [
         Binding("q", "quit", "Quit"),
+        Binding("r", "refresh", "Refresh"),
     ]
 
     def __init__(self, db_path: Path, **kwargs) -> None:
@@ -69,6 +70,31 @@ class JobViewerApp(App):
 
         self.title = f"Job Viewer — {len(self._postings)} postings"
         self.query_one("#details-panel").display = False
+
+    def action_refresh(self) -> None:
+        from tui.db import get_postings, make_engine
+
+        try:
+            engine = make_engine(self.db_path)
+            self._postings = get_postings(engine)
+        except Exception as e:
+            self.notify(f"Refresh failed: {e}", severity="error")
+            return
+
+        table = self.query_one("#jobs-table", DataTable)
+        table.clear()
+        for posting in self._postings:
+            status = posting.status or "new"
+            table.add_row(
+                posting.display_name,
+                posting.display_date,
+                Text(status, style=STATE_STYLES.get(status, "white")),
+                key=posting.url,
+            )
+
+        self.title = f"Job Viewer — {len(self._postings)} postings"
+        self.query_one("#details-panel").display = False
+        self._details_visible = False
 
     def on_resize(self) -> None:
         if self._job_col_key is None:

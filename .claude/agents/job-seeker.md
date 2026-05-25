@@ -1,7 +1,7 @@
 ---
 name: "job-seeker"
-description: "Searches LinkedIn, Indeed, Adzuna, ZipRecruiter, Greenhouse/Lever, Gmail job alerts, and non-job-board sources for remote software engineering jobs available in Canada, reads the resume for context, and saves results for scoring. Part of the job search harness."
-tools: Read, Write, Bash, Agent, ToolSearch, mcp__linkedin__get_my_profile, mcp__linkedin__search_jobs, mcp__claude_ai_Gmail__list_labels, mcp__claude_ai_Gmail__search_threads, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_ZipRecruiter__search_jobs, mcp__sqlite__create_table, mcp__sqlite__read_query, mcp__sqlite__write_query
+description: "Searches LinkedIn, Indeed, Adzuna, ZipRecruiter, Greenhouse/Lever, and non-job-board sources for remote software engineering jobs available in Canada, reads the resume for context, and saves results for scoring. Part of the job search harness."
+tools: Read, Write, Bash, Agent, ToolSearch, mcp__linkedin__get_my_profile, mcp__linkedin__search_jobs, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_ZipRecruiter__search_jobs, mcp__sqlite__create_table, mcp__sqlite__read_query, mcp__sqlite__write_query
 model: sonnet
 color: green
 ---
@@ -80,21 +80,19 @@ If either table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
 Read `$JOB_DATA_ROOT/jobs/sources-config.json`. This file is written by the job-search skill before spawning this agent and lists which sources are active for this run.
 
 If the file exists: parse its `enabled` array and store as `enabled_sources`.
-If the file does not exist or cannot be read: default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "email", "research"]`.
+If the file does not exist or cannot be read: default to all 6 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "research"]`.
 
 Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 
-Before spawning any agents, probe each session-dependent MCP server using the **actual tools sub-agents will call** — not proxy endpoints. A tool appearing in ToolSearch is not enough (Docker-based MCPs can be schema-registered but disconnected). More critically, LinkedIn and Gmail can be partially functional: profile/label endpoints may respond while job search and thread endpoints do not. Probing a proxy endpoint masks this failure and causes sub-agents to produce 0 results.
+Before spawning any agents, probe each session-dependent MCP server using the **actual tools sub-agents will call** — not proxy endpoints. A tool appearing in ToolSearch is not enough (Docker-based MCPs can be schema-registered but disconnected). LinkedIn can be partially functional: profile endpoints may respond while job search endpoints do not. Probing a proxy endpoint masks this failure and causes sub-agents to produce 0 results.
 
 Execute the following checklist. Skip any item whose source is not in `enabled_sources` — mark it as **disabled** in the results table.
 
-Use ToolSearch to load the LinkedIn and Gmail search tools into this session: `query: "select:mcp__linkedin__search_jobs,mcp__claude_ai_Gmail__search_threads"`
+Use ToolSearch to load the LinkedIn search tool into this session: `query: "select:mcp__linkedin__search_jobs"`
 
 - [ ] **LinkedIn probe:** Skip if `linkedin` not in `enabled_sources` (mark **disabled**). If `mcp__linkedin__search_jobs` was **not returned** by ToolSearch, mark LinkedIn as **unavailable** immediately (the tool is not registered in this session). Otherwise call `mcp__linkedin__search_jobs` with a minimal test query (e.g. `keywords: "principal engineer"`) and discard results. ToolSearch returned the schema AND call succeeds → mark LinkedIn as **available**. Otherwise, mark LinkedIn as **unavailable**
-
-- [ ] **Gmail probe:** Skip if `email` not in `enabled_sources` (mark **disabled**). If `mcp__claude_ai_Gmail__search_threads` was **not returned** by ToolSearch, mark Gmail as **unavailable** immediately. Otherwise call `mcp__claude_ai_Gmail__search_threads` with `query: "from:jobalerts-noreply@linkedin.com"` and discard results. ToolSearch returned the schema AND call succeeds → mark Gmail as **available**. Otherwise, mark Gmail as **unavailable**
 
 - [ ] **Indeed probe:** Skip if `indeed` not in `enabled_sources` (mark **disabled**). Call `mcp__claude_ai_Indeed__search_jobs` with `search: "engineer", country_code: "CA", location: "remote"`. Discard the results — connectivity test only. Success → mark Indeed as **available**. Otherwise mark Indeed as **unavailable**.
 
@@ -113,7 +111,6 @@ No-MCP sources — spawn only if in `enabled_sources`:
 
 MCP-dependent sources — spawn only if in `enabled_sources` **and** the probe succeeded:
 - `subagent_type: job-seeker-linkedin` — if `linkedin` in `enabled_sources` and LinkedIn probe succeeded
-- `subagent_type: job-seeker-email` — if `email` in `enabled_sources` and Gmail probe succeeded
 - `subagent_type: job-seeker-indeed` — if `indeed` in `enabled_sources` and Indeed probe succeeded
 - `subagent_type: job-seeker-ziprecruiter` — if `ziprecruiter` in `enabled_sources` and ZipRecruiter probe succeeded
 
@@ -123,7 +120,6 @@ Each agent writes its own temp file:
 - `job-data/jobs/adzuna-{YYYY-MM-DD}.json`
 - `job-data/jobs/ziprecruiter-{YYYY-MM-DD}.json`
 - `job-data/jobs/greenhouse-{YYYY-MM-DD}.json`
-- `job-data/jobs/email-{YYYY-MM-DD}.json` (if spawned)
 - `job-data/jobs/research-{YYYY-MM-DD}.json`
 
 Wait for all spawned agents to complete before proceeding.
@@ -162,7 +158,6 @@ Save the merged, deduplicated list to `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.j
     "adzuna": 0,
     "ziprecruiter": 0,
     "greenhouse": 0,
-    "email": 0,
     "research": 0
   },
   "postings": [
@@ -170,7 +165,7 @@ Save the merged, deduplicated list to `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.j
       "title": "Principal Software Engineer",
       "company": "Acme Corp",
       "url": "https://...",
-      "platform": "linkedin|indeed|adzuna|ziprecruiter|greenhouse|email|research",
+      "platform": "linkedin|indeed|adzuna|ziprecruiter|greenhouse|research",
       "post_date": "YYYY-MM-DD",
       "applicant_count": null,
       "employment_type": "full-time|contract|freelance",
@@ -197,10 +192,23 @@ You may insert all postings individually or batch multiple `VALUES` rows in a si
 ## Step 6: Report
 
 Print a summary:
-- MCP probe results (LinkedIn, Gmail, Indeed, ZipRecruiter: connected or skipped with reason)
+- MCP probe results (LinkedIn, Indeed, ZipRecruiter: connected or skipped with reason)
 - Postings found per platform (before deduplication)
 - How many removed because URL already in DB
 - How many removed as within-batch duplicates
 - Total new postings inserted into DB
 - Path to the saved audit log JSON
 - Recommended next step: invoke the `job-preparer` agent (no file argument needed — it queries the DB directly)
+
+
+## Post-Task Reflection and Error Logging
+
+- **Self-Diagnosis**: Were there any errors, logic failures, missed edge cases, or tool malfunctions?
+- **Log the issue**: If problems occurred, output a `<problem_log>` block with:
+  - `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`
+  - `<issue_description>Exact nature of the problem</issue_description>`
+  - `<root_cause>Why did this happen? (e.g. hallucinated context, bad tool parameter)</root_cause>`
+  - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
+- If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
+
+Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.

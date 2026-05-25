@@ -1,13 +1,8 @@
 {
   "mcpServers": {
     "linkedin": {
-      "command": "wsl.exe",
-      "args": [
-	"docker",
-        "run", "--rm", "-i",
-	"-v", "~/.linkedin-mcp:/home/pwuser/.linkedin-mcp",
-        "stickerdaniel/linkedin-mcp-server:latest"
-      ]
+      "command": "bash",
+      "args": ["./scripts/linkedin-mcp.sh"]
     },
     "sqlite": {
       "command": "bash",
