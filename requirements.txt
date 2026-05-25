@@ -1,0 +1,4 @@
+rendercv[full]
+-e ./scoring-module
+-e ./tui
+linkedin-scraper-mcp
