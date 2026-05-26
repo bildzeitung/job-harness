@@ -4,6 +4,8 @@ import json
 import os
 import re
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
@@ -20,6 +22,9 @@ TODAY = date.today().isoformat()
 DB_PATH = os.environ.get("SQLITE_DB_PATH")
 JOB_DATA_ROOT = os.environ.get("JOB_DATA_ROOT", "")
 MAX_BATCH_WORKERS = 5
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 2
+_DB_WRITE_LOCK = threading.Lock()
 JD_FETCH_MIN_LENGTH = 500
 JD_TRUNCATE_LENGTH = 8000
 JD_TRUNCATE_WARN_THRESHOLD = 7900
@@ -36,6 +41,28 @@ def _load_system_prompt() -> str:
 _SYSTEM_PROMPT = _load_system_prompt()
 
 
+def _retry(fn, *args, **kwargs):
+    """Call fn(*args, **kwargs) up to MAX_RETRIES times with exponential backoff.
+
+    Re-raises immediately on authentication/permission errors; retries everything else.
+    """
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            return fn(*args, **kwargs)
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
+            raise
+        except Exception as exc:
+            if attempt == MAX_RETRIES:
+                raise
+            wait = RETRY_BACKOFF_BASE ** (attempt + 1)
+            print(
+                f"[WARN] Transient failure (attempt {attempt + 1}/{MAX_RETRIES}), "
+                f"retrying in {wait}s: {exc}",
+                file=sys.stderr,
+            )
+            time.sleep(wait)
+
+
 def _make_client() -> anthropic.Anthropic:
     if api_key := os.environ.get("ANTHROPIC_API_KEY"):
         return anthropic.Anthropic(api_key=api_key)
@@ -47,8 +74,8 @@ def _make_client() -> anthropic.Anthropic:
             token = creds.get("claudeAiOauth", {}).get("accessToken")
             if token:
                 return anthropic.Anthropic(auth_token=token)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[WARN] Could not load credentials from {creds_path}: {e}", file=sys.stderr)
     raise RuntimeError(
         "No Anthropic credentials found. Set ANTHROPIC_API_KEY in "
         ".claude/settings.local.json, or log in with `claude login`."
@@ -96,6 +123,7 @@ def _fetch_jd(url: str) -> str | None:
             text = re.sub(r"<[^>]+>", " ", resp.text)
             text = re.sub(r"\s+", " ", text).strip()
             return text[:JD_TRUNCATE_LENGTH]
+        print(f"[WARN] HTTP {resp.status_code} fetching JD from {url}", file=sys.stderr)
     except Exception:
         pass
     return None
@@ -133,7 +161,8 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
 
     user_msg = f"Title: {title}\nCompany: {company}\nURL: {url}\n\nJob Description:\n{jd_text}"
 
-    resp = client.messages.create(
+    resp = _retry(
+        client.messages.create,
         model="claude-haiku-4-5-20251001",
         max_tokens=512,
         system=[{"type": "text", "text": _SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
@@ -194,24 +223,28 @@ def _save_report(result: dict[str, Any], reports_dir: Path) -> None:
         json.dump(result, f, indent=2)
 
 
-def _update_db(result: dict[str, Any]) -> None:
-    engine = make_engine(Path(DB_PATH))
-    with Session(engine) as session:
-        session.execute(
-            sa_update(Posting)
-            .where(Posting.url == result["url"])
-            .values(
-                base_score=result["base_score"],
-                modifier=result["modifier"],
-                final_score=result["final_score"],
-                scored_date=TODAY,
-                scoring_notes=result["scoring_notes"],
-                dimension_scores=json.dumps(result["dimension_scores"]),
-                job_description_text=result["job_description_text"],
-                status="scored",
+def _update_db(engine, result: dict[str, Any]) -> None:
+    with _DB_WRITE_LOCK:
+        with Session(engine) as session:
+            r = session.execute(
+                sa_update(Posting)
+                .where(Posting.url == result["url"])
+                .values(
+                    base_score=result["base_score"],
+                    modifier=result["modifier"],
+                    final_score=result["final_score"],
+                    scored_date=TODAY,
+                    scoring_notes=result["scoring_notes"],
+                    dimension_scores=json.dumps(result["dimension_scores"]),
+                    job_description_text=result["job_description_text"],
+                    status="scored",
+                )
             )
-        )
-        session.commit()
+            if r.rowcount == 0:
+                raise ValueError(
+                    f"No DB row found for URL {result['url']!r}; score not persisted"
+                )
+            session.commit()
 
 
 def score_batch(batch_file: str) -> int:
@@ -232,11 +265,12 @@ def score_batch(batch_file: str) -> int:
 
     reports_dir = Path(JOB_DATA_ROOT) / "jobs" / "reports"
     client = _make_client()
+    engine = make_engine(Path(DB_PATH))
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
         result = _score_one(client, posting)
         _save_report(result, reports_dir)
-        _update_db(result)
+        _update_db(engine, result)
         print(f"[SCORED] {result['company']} — {result['title']}: {result['final_score']}/100",
               flush=True)
         return result
