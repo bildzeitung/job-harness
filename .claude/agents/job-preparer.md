@@ -128,13 +128,16 @@ Below the table, note the count of postings that scored below 75 (count only, no
 
 ## Step 5b: Ask User Which Jobs to Prepare
 
-Call `AskUserQuestion` to let the user select which of the top 5 jobs should have tailored resumes and cover letters produced. Present each job as a checkbox option in the format `"Score {N} — {Company}: {Title}"`.
+After printing the ranked table, print the following prompt (substituting the actual rank numbers):
 
-Use `multiSelect: true` so the user can select any combination.
+```
+Reply with the rank numbers of the jobs you'd like to prepare (e.g. `1 3` or `1, 2, 4`).
+Type `none` to skip preparation entirely.
+```
 
-Wait for the user's response. The selected jobs become the **preparation list**.
+Wait for the user's reply. Parse the reply to extract rank numbers (accept space- or comma-separated integers, case-insensitive `none` to skip). Map each rank number back to the corresponding posting from the top-5 list. These become the **preparation list**.
 
-If the user selects zero jobs, print a message and stop — do not proceed to Step 6 or 7.
+If the user replies `none` or the reply contains no valid rank numbers, print a message and stop — do not proceed to Step 6 or 7.
 
 ## Step 6: Mark Selected in DB
 
