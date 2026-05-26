@@ -13,6 +13,7 @@ STATE_STYLES: dict[str, str] = {
     "scored": "bold cyan",
     "selected": "bold yellow",
     "skipped": "dim red",
+    "prepared": "bold magenta",
     "applied": "bold red",
 }
 
@@ -27,6 +28,7 @@ class JobViewerApp(App):
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
         Binding("p", "prepare_job", "Prepare"),
+        Binding("a", "mark_applied", "Applied"),
         Binding("j", "scroll_details_down", "Scroll ↓", show=False),
         Binding("k", "scroll_details_up", "Scroll ↑", show=False),
     ]
@@ -37,6 +39,7 @@ class JobViewerApp(App):
         self._postings: list = []
         self._details_visible = False
         self._job_col_key = None
+        self._state_col_key = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -60,7 +63,7 @@ class JobViewerApp(App):
         job_width = max(20, self.size.width - _DATE_WIDTH - _STATE_WIDTH - _COL_PADDING)
         self._job_col_key = table.add_column("Job", width=job_width)
         table.add_column("Date", width=_DATE_WIDTH)
-        table.add_column("State", width=_STATE_WIDTH)
+        self._state_col_key = table.add_column("State", width=_STATE_WIDTH)
 
         for posting in self._postings:
             status = posting.status or "new"
@@ -137,6 +140,32 @@ class JobViewerApp(App):
             self.notify("Only 'selected' jobs can be prepared", severity="warning")
             return
         self.exit({"action": "prepare", "url": posting.url})
+
+    def action_mark_applied(self) -> None:
+        from tui.db import make_engine, update_status
+
+        table = self.query_one("#jobs-table", DataTable)
+        row = table.cursor_row
+        if row < 0 or row >= len(self._postings):
+            return
+        posting = self._postings[row]
+        if posting.status == "applied":
+            self.notify("Already marked as applied", severity="warning")
+            return
+        try:
+            engine = make_engine(self.db_path)
+            update_status(engine, posting.url, "applied")
+        except Exception as e:
+            self.notify(f"Failed to update status: {e}", severity="error")
+            return
+        posting.status = "applied"
+        table.update_cell(
+            posting.url,
+            self._state_col_key,
+            Text("applied", style=STATE_STYLES["applied"]),
+            update_width=False,
+        )
+        self.notify(f"Marked as applied: {posting.display_name}")
 
     def action_scroll_details_down(self) -> None:
         if self._details_visible:

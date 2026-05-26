@@ -107,7 +107,7 @@ WHERE status = 'scored'
 ORDER BY final_score DESC
 ```
 
-This is your ranked candidate list. Postings with status `selected`, `applied`, or `skipped` are automatically excluded.
+This is your ranked candidate list. Postings with status `selected`, `prepared`, `applied`, or `skipped` are automatically excluded.
 
 ## Step 5: Present Top 5 to User
 

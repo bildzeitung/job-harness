@@ -132,7 +132,7 @@ Use ToolSearch with `query: "select:mcp__sqlite__read_query"` to load the tool. 
 SELECT url FROM postings
 ```
 
-Collect the result as a set (`existing_urls`). Any URL in this set has already been ingested (regardless of its current status: new, scored, selected, applied, etc.) and must not be re-inserted.
+Collect the result as a set (`existing_urls`). Any URL in this set has already been ingested (regardless of its current status: new, scored, selected, prepared, applied, etc.) and must not be re-inserted.
 
 ## Step 4: Merge and Deduplicate
 

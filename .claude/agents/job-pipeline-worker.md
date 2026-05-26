@@ -128,10 +128,10 @@ Use `cover_letter_pdf` as the cover letter PDF path in the Step 7 report.
 
 Call `TaskUpdate` to set status to `completed`. Include output paths in the task output field.
 
-Update the DB row to `applied`. Call `mcp__sqlite__write_query`:
+Update the DB row to `prepared`. Call `mcp__sqlite__write_query`:
 
 ```sql
-UPDATE postings SET status = 'applied' WHERE url = '{url}'
+UPDATE postings SET status = 'prepared' WHERE url = '{url}'
 ```
 
 Send a message to the team lead (`lead_name`):
