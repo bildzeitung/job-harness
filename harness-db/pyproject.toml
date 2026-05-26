@@ -1,19 +1,13 @@
 [project]
-name = "job-tui"
+name = "harness-db"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "textual>=0.80",
     "sqlalchemy>=2.0",
-    "typer>=0.12",
-    "harness-db",
 ]
 
-[project.scripts]
-job-tui = "tui.cli:app"
-
 [tool.hatch.build.targets.wheel]
-packages = ["tui"]
+packages = ["harness_db"]
 
 [build-system]
 requires = ["hatchling"]

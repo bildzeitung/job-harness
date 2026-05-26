@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import subprocess
 from pathlib import Path
 
 from rich.text import Text
@@ -7,6 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
+from textual.worker import work
 
 STATE_STYLES: dict[str, str] = {
     "new": "bold green",
@@ -19,6 +22,8 @@ STATE_STYLES: dict[str, str] = {
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
 _COL_PADDING = 6  # borders, scrollbar, gutters
+_OUTPUT_PANEL_HEIGHT = 20
+_ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 class JobViewerApp(App):
@@ -27,6 +32,7 @@ class JobViewerApp(App):
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
         Binding("p", "prepare_job", "Prepare"),
+        Binding("o", "toggle_output", "Output", show=False),
         Binding("j", "scroll_details_down", "Scroll ↓", show=False),
         Binding("k", "scroll_details_up", "Scroll ↑", show=False),
     ]
@@ -44,6 +50,8 @@ class JobViewerApp(App):
             yield DataTable(id="jobs-table", cursor_type="row", zebra_stripes=True)
             with ScrollableContainer(id="details-panel"):
                 yield Static(id="details-content")
+            with ScrollableContainer(id="output-panel"):
+                yield Static(id="output-content")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -73,6 +81,7 @@ class JobViewerApp(App):
 
         self.title = f"Job Viewer — {len(self._postings)} postings"
         self.query_one("#details-panel").display = False
+        self.query_one("#output-panel").display = False
 
     def action_refresh(self) -> None:
         from tui.db import get_postings, make_engine
@@ -136,7 +145,56 @@ class JobViewerApp(App):
         if posting.status != "selected":
             self.notify("Only 'selected' jobs can be prepared", severity="warning")
             return
-        self.exit({"action": "prepare", "url": posting.url})
+
+        prompt = (
+            f"Use the job-preparer agent. A job is already in 'selected' state in the database "
+            f"(URL: {posting.url}). Skip scoring and selection — go straight to running the full "
+            f"pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
+        )
+
+        output_widget = self.query_one("#output-content", Static)
+        output_widget.update("")
+        self.query_one("#output-panel").display = True
+        self.notify(f"Launching prepare for {posting.company or posting.url}…")
+        self._run_prepare(posting.url, prompt)
+
+    @work(thread=True, exclusive=True)
+    def _run_prepare(self, url: str, prompt: str) -> None:
+        lines: list[str] = []
+
+        def _update(line: str) -> None:
+            lines.append(_ANSI_ESCAPE.sub("", line).rstrip())
+            self.call_from_thread(
+                self.query_one("#output-content", Static).update,
+                "\n".join(lines),
+            )
+
+        try:
+            proc = subprocess.Popen(
+                ["claude", prompt],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            for line in proc.stdout:
+                _update(line)
+            proc.wait()
+            if proc.returncode == 0:
+                self.call_from_thread(self.notify, "Prepare complete!", severity="information")
+            else:
+                self.call_from_thread(
+                    self.notify, f"Prepare failed (exit {proc.returncode})", severity="error"
+                )
+        except Exception as exc:
+            self.call_from_thread(
+                self.query_one("#output-content", Static).update, f"Error: {exc}"
+            )
+            self.call_from_thread(self.notify, f"Failed to launch claude: {exc}", severity="error")
+
+    def action_toggle_output(self) -> None:
+        panel = self.query_one("#output-panel")
+        panel.display = not panel.display
 
     def action_scroll_details_down(self) -> None:
         if self._details_visible:

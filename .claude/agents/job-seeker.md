@@ -170,7 +170,8 @@ Save the merged, deduplicated list to `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.j
       "applicant_count": null,
       "employment_type": "full-time|contract|freelance",
       "location_note": "Remote, Canada OK",
-      "description_summary": "2-3 sentence summary"
+      "description_summary": "2-3 sentence summary",
+      "job_description_text": "Full description text, or null if not available"
     }
   ]
 }
@@ -180,14 +181,14 @@ Save the merged, deduplicated list to `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.j
 
 Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the tool.
 
-For each posting in the deduplicated list, call `mcp__sqlite__write_query` with an `INSERT OR IGNORE` statement. Today's date is `first_seen`. Escape single quotes in string values by doubling them (`'` → `''`). Use SQL `NULL` (not the string `'null'`) for unknown integers.
+For each posting in the deduplicated list, call `mcp__sqlite__write_query` with an `INSERT OR IGNORE` statement. Today's date is `first_seen`. Escape single quotes in string values by doubling them (`'` → `''`). Use SQL `NULL` (not the string `'null'`) for unknown integers and missing text.
 
 ```sql
-INSERT OR IGNORE INTO postings (url, title, company, platform, post_date, applicant_count, employment_type, location_note, description_summary, first_seen, status)
-VALUES ('https://...', 'Principal Software Engineer', 'Acme Corp', 'linkedin', '2026-05-19', NULL, 'full-time', 'Remote, Canada OK', '2-3 sentence summary', '2026-05-19', 'new')
+INSERT OR IGNORE INTO postings (url, title, company, platform, post_date, applicant_count, employment_type, location_note, description_summary, job_description_text, first_seen, status)
+VALUES ('https://...', 'Principal Software Engineer', 'Acme Corp', 'linkedin', '2026-05-19', NULL, 'full-time', 'Remote, Canada OK', '2-3 sentence summary', NULL, '2026-05-19', 'new')
 ```
 
-You may insert all postings individually or batch multiple `VALUES` rows in a single statement. `INSERT OR IGNORE` silently discards any URL already in the table (safety net against race conditions).
+Set `job_description_text` to the full description text from the sub-agent's output if it was provided, or `NULL` if not. `INSERT OR IGNORE` silently discards any URL already in the table (safety net against race conditions).
 
 ## Step 6: Report
 

@@ -22,3 +22,15 @@ Screen {
     color: $text;
     padding: 0;
 }
+
+#output-panel {
+    height: 20;
+    border-top: solid $warning;
+    background: $panel;
+    padding: 0 1;
+}
+
+#output-content {
+    color: $text;
+    padding: 0;
+}

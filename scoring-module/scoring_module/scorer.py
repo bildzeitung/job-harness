@@ -3,7 +3,6 @@
 import json
 import os
 import re
-import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
@@ -12,11 +11,29 @@ from typing import Any
 
 import anthropic
 import httpx
+from harness_db.models import Posting, make_engine
+from sqlalchemy import update as sa_update
+from sqlalchemy.orm import Session
 
 TODAY = date.today().isoformat()
 
-DB_PATH = os.environ.get("SQLITE_DB_PATH", "/home/dmklein/mcp-sqlite/job-search.db")
+DB_PATH = os.environ.get("SQLITE_DB_PATH")
 JOB_DATA_ROOT = os.environ.get("JOB_DATA_ROOT", "")
+MAX_BATCH_WORKERS = 5
+JD_FETCH_MIN_LENGTH = 500
+JD_TRUNCATE_LENGTH = 8000
+JD_TRUNCATE_WARN_THRESHOLD = 7900
+
+
+def _load_system_prompt() -> str:
+    module_dir = Path(__file__).parent
+    with open(module_dir / "candidate_profile.json") as f:
+        profile = json.load(f)
+    template = (module_dir / "system_prompt.txt").read_text()
+    return template.replace("{{CANDIDATE_PROFILE}}", profile["profile_text"])
+
+
+_SYSTEM_PROMPT = _load_system_prompt()
 
 
 def _make_client() -> anthropic.Anthropic:
@@ -36,35 +53,6 @@ def _make_client() -> anthropic.Anthropic:
         "No Anthropic credentials found. Set ANTHROPIC_API_KEY in "
         ".claude/settings.local.json, or log in with `claude login`."
     )
-
-_SYSTEM_PROMPT = """You are a job-fit scorer. Score a job posting against this candidate profile and return JSON only.
-
-## Candidate Profile
-- Principal/Staff Engineer, 20+ years total, 13 at Oracle (OCI, Public Cloud, Health & AI)
-- Stack: Python, Java, C#, OCI, Azure, AWS, Kubernetes, Terraform, Helm, FHIR, GraphQL, SQL
-- Location: Thunder Bay, ON, Canada — must be fully remote
-- No formal certifications (no AWS Certified, Azure Administrator, GCP Associate, PMP, CISSP, CKA)
-- Domains: healthcare/FHIR, cloud infrastructure, distributed systems, AI/ML platform engineering
-
-## Scoring Rubric (score each dimension 1–10)
-| Dimension           | Weight | What to look for                            |
-|---------------------|--------|---------------------------------------------|
-| technical_fit       |   35%  | Stack overlap with candidate skills         |
-| seniority_match     |   25%  | Principal / Staff / Architect level         |
-| domain_fit          |   20%  | Cloud, healthcare, AI/ML, distributed sys   |
-| remote_canada_confirmed | 10% | Explicit in posting (not assumed)          |
-| role_clarity        |   10%  | Clear responsibilities, not vague           |
-
-base_score = round(weighted_average * 10)
-
-## Disqualifiers (apply modifier, explain in notes; sum if multiple)
-- Requires a named formal certification (AWS Certified, Azure Administrator, GCP Associate, PMP, CISSP, CKA, etc.): -40
-- Requires on-site or relocation: -30
-- Geography excludes Canada (US-only auth language, US city/state with no remote mention, "US-based candidates only"): -25
-- No disqualifiers: 0
-
-## Output — JSON only, no markdown, no explanation
-{"dimension_scores": {"technical_fit": N, "seniority_match": N, "domain_fit": N, "remote_canada_confirmed": N, "role_clarity": N}, "base_score": N, "disqualifier_modifier": N, "scoring_notes": "brief notes"}"""
 
 
 def _age_modifier(post_date_str: str | None) -> int:
@@ -107,7 +95,7 @@ def _fetch_jd(url: str) -> str | None:
         if resp.status_code == 200:
             text = re.sub(r"<[^>]+>", " ", resp.text)
             text = re.sub(r"\s+", " ", text).strip()
-            return text[:8000]
+            return text[:JD_TRUNCATE_LENGTH]
     except Exception:
         pass
     return None
@@ -115,7 +103,6 @@ def _fetch_jd(url: str) -> str | None:
 
 def _parse_json_response(text: str) -> dict[str, Any]:
     """Parse JSON from model response, stripping markdown code fences if present."""
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
     stripped = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
     stripped = re.sub(r"\s*```$", "", stripped.strip())
     return json.loads(stripped.strip())
@@ -130,10 +117,16 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
 
     jd_text = posting.get("job_description_text") or ""
     fetch_failed = False
-    if len(jd_text) < 500:
+    if len(jd_text) < JD_FETCH_MIN_LENGTH:
         fetched = _fetch_jd(url)
         if fetched:
             jd_text = fetched
+            if len(jd_text) >= JD_TRUNCATE_WARN_THRESHOLD:
+                print(
+                    f"[WARN] JD for {company} — {title} may be truncated "
+                    f"({len(jd_text)} chars fetched from URL)",
+                    file=sys.stderr,
+                )
         else:
             jd_text = posting.get("description_summary") or ""
             fetch_failed = True
@@ -202,53 +195,54 @@ def _save_report(result: dict[str, Any], reports_dir: Path) -> None:
 
 
 def _update_db(result: dict[str, Any]) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute(
-            """UPDATE postings
-               SET base_score = ?, modifier = ?, final_score = ?,
-                   scored_date = ?, scoring_notes = ?,
-                   dimension_scores = ?, job_description_text = ?,
-                   status = 'scored'
-               WHERE url = ?""",
-            (
-                result["base_score"],
-                result["modifier"],
-                result["final_score"],
-                TODAY,
-                result["scoring_notes"],
-                json.dumps(result["dimension_scores"]),
-                result["job_description_text"],
-                result["url"],
-            ),
+    engine = make_engine(Path(DB_PATH))
+    with Session(engine) as session:
+        session.execute(
+            sa_update(Posting)
+            .where(Posting.url == result["url"])
+            .values(
+                base_score=result["base_score"],
+                modifier=result["modifier"],
+                final_score=result["final_score"],
+                scored_date=TODAY,
+                scoring_notes=result["scoring_notes"],
+                dimension_scores=json.dumps(result["dimension_scores"]),
+                job_description_text=result["job_description_text"],
+                status="scored",
+            )
         )
-        conn.commit()
-    finally:
-        conn.close()
+        session.commit()
 
 
-def score_batch(batch_file: str, max_workers: int = 5) -> int:
+def score_batch(batch_file: str) -> int:
     """Score all postings in a batch file. Returns count of successfully scored postings."""
+    if not JOB_DATA_ROOT:
+        raise RuntimeError(
+            "JOB_DATA_ROOT not set — cannot save reports; aborting. "
+            "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
+        )
+    if not DB_PATH:
+        raise RuntimeError(
+            "SQLITE_DB_PATH not set — cannot save scores to database; aborting. "
+            "Add it to .claude/settings.local.json under env.SQLITE_DB_PATH."
+        )
+
     with open(batch_file) as f:
         postings = json.load(f)
 
-    reports_dir = Path(JOB_DATA_ROOT) / "jobs" / "reports" if JOB_DATA_ROOT else None
-    if not JOB_DATA_ROOT:
-        print("[WARN] JOB_DATA_ROOT not set; reports will not be saved", file=sys.stderr)
-
+    reports_dir = Path(JOB_DATA_ROOT) / "jobs" / "reports"
     client = _make_client()
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
         result = _score_one(client, posting)
-        if reports_dir:
-            _save_report(result, reports_dir)
+        _save_report(result, reports_dir)
         _update_db(result)
         print(f"[SCORED] {result['company']} — {result['title']}: {result['final_score']}/100",
               flush=True)
         return result
 
     scored_count = 0
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    with ThreadPoolExecutor(max_workers=MAX_BATCH_WORKERS) as pool:
         futures = {pool.submit(process, p): p for p in postings}
         for fut in as_completed(futures):
             try:
