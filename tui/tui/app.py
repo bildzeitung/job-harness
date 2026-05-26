@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
-from textual.worker import work
+from textual import work
 
 STATE_STYLES: dict[str, str] = {
     "new": "bold green",
