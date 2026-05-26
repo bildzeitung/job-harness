@@ -70,11 +70,14 @@ Save results to `$JOB_DATA_ROOT/jobs/linkedin-{YYYY-MM-DD}.json` (today's date):
       "applicant_count": null,
       "employment_type": "full-time|contract|freelance",
       "location_note": "Remote, worldwide / Canada OK",
-      "description_summary": "2-3 sentence summary of the role and key requirements"
+      "description_summary": "2-3 sentence summary of the role and key requirements",
+      "job_description_text": "Full job description text from get_job_details, truncated to 8000 chars"
     }
   ]
 }
 ```
+
+Always populate `job_description_text` from the `get_job_details` response — this is what the scorer uses. Truncate to 8000 characters if longer.
 
 Use `null` for `post_date` or `applicant_count` when not available.
 

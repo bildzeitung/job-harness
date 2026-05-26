@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -32,12 +31,3 @@ def main(
     if isinstance(result, str):
         typer.echo(result, err=True)
         raise typer.Exit(1)
-    if isinstance(result, dict) and result.get("action") == "prepare":
-        url = result["url"]
-        typer.echo(f"\nLaunching job-preparer for:\n  {url}\n")
-        prompt = (
-            f"Use the job-preparer agent. A job is already in 'selected' state in the database "
-            f"(URL: {url}). Skip scoring and selection — go straight to running the full "
-            f"pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
-        )
-        os.execvp("claude", ["claude", prompt])

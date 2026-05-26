@@ -1,4 +1,5 @@
 rendercv[full]
+-e ./harness-db
 -e ./scoring-module
 -e ./email-parser
 -e ./adzuna-search

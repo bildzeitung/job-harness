@@ -92,11 +92,14 @@ Save results to `$JOB_DATA_ROOT/jobs/greenhouse-{YYYY-MM-DD}.json` (today's date
       "applicant_count": null,
       "employment_type": "full-time|contract|freelance",
       "location_note": "Remote, Canada OK",
-      "description_summary": "2-3 sentence summary of the role and key requirements"
+      "description_summary": "2-3 sentence summary of the role and key requirements",
+      "job_description_text": "Full job description from the content field, HTML stripped, truncated to 8000 chars"
     }
   ]
 }
 ```
+
+Always populate `job_description_text` from the `content` field — strip HTML tags and truncate to 8000 characters. This is what the scorer uses.
 
 Use `null` for `post_date` or `applicant_count` when not available.
 
