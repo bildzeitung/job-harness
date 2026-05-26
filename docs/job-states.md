@@ -6,18 +6,18 @@ The `status` column in the `postings` table tracks where each posting is in the 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> new : job-seeker inserts posting\n(INSERT OR IGNORE)
+    [*] --> new : job-seeker inserts posting<br>(INSERT OR IGNORE)
 
-    new --> skipped : pre-filter: hard disqualifier\n(US-only · on-site · intern · relocation)
-    new --> scored : scoring_module scores posting\n(base_score + modifiers applied)
-    new --> new : soft skill mismatch\n(excluded this run, re-evaluated next)
+    new --> skipped : pre-filter: hard disqualifier<br>(US-only · on-site · intern · relocation)
+    new --> scored : scoring_module scores posting<br>(base_score + modifiers applied)
+    new --> new : soft skill mismatch<br>(excluded this run, re-evaluated next)
 
-    scored --> scored : stale — re-scored\n(scored_date > 7 days ago)
-    scored --> selected : job-preparer: top 5\nwhere final_score ≥ 75
+    scored --> scored : stale — re-scored<br>(scored_date > 7 days ago)
+    scored --> selected : job-preparer: top 5<br>where final_score ≥ 75
 
-    selected --> prepared : job-pipeline-worker:\nresume + cover letter PDFs rendered
+    selected --> prepared : job-pipeline-worker:<br>resume + cover letter PDFs rendered
 
-    prepared --> applied : user marks applied\n(via TUI: press 'a')
+    prepared --> applied : user marks applied
 
     skipped --> [*]
     applied --> [*]
