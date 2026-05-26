@@ -26,6 +26,9 @@ class JobViewerApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
+        Binding("p", "prepare_job", "Prepare"),
+        Binding("j", "scroll_details_down", "Scroll ↓", show=False),
+        Binding("k", "scroll_details_up", "Scroll ↑", show=False),
     ]
 
     def __init__(self, db_path: Path, **kwargs) -> None:
@@ -123,6 +126,25 @@ class JobViewerApp(App):
         self.query_one("#details-content", Static).update(self._format_details(posting))
         self.query_one("#details-panel").display = True
         self._details_visible = True
+
+    def action_prepare_job(self) -> None:
+        table = self.query_one("#jobs-table", DataTable)
+        row = table.cursor_row
+        if row < 0 or row >= len(self._postings):
+            return
+        posting = self._postings[row]
+        if posting.status != "selected":
+            self.notify("Only 'selected' jobs can be prepared", severity="warning")
+            return
+        self.exit({"action": "prepare", "url": posting.url})
+
+    def action_scroll_details_down(self) -> None:
+        if self._details_visible:
+            self.query_one("#details-panel", ScrollableContainer).scroll_down()
+
+    def action_scroll_details_up(self) -> None:
+        if self._details_visible:
+            self.query_one("#details-panel", ScrollableContainer).scroll_up()
 
     def _format_details(self, posting) -> str:
         lines: list[str] = []
