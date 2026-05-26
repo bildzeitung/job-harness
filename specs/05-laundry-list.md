@@ -14,4 +14,9 @@ Work through each of the following subsections. Each subsection is a different m
 
 ### agents
 
-- [ ] the job database lists jobs in the `new` state; i need a way to run the harness so that these are either scored or skipped
+- [ ] the job database lists jobs in the `new` state; i need a way to run the harness so that these are either scored or skipped; this possibly relates to the next item where jobs seem to stay "new".
+- [ ] in `docs/job-states.md` the diagram states "soft skill mismatch (excluded this run, re-evaluated next)". Does this really happen? Identify this case and fix it such that we do not stay in "new".
+
+### docs
+
+- [ ] Mermaid diagrams do not understand `\n`. Use `<br>` instead.
