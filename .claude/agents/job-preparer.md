@@ -152,7 +152,9 @@ Escape single quotes in the URL by doubling them if needed.
 
 ## Step 7: Spawn Resume Pipeline
 
-Use ToolSearch with `query: "select:TeamCreate,TeamDelete,TaskCreate,TaskList,SendMessage"` to load required tool schemas before proceeding. The `Agent` tool is natively available (it is in your tools list) — do **not** include it in ToolSearch queries, as it is not a deferred tool and ToolSearch will not return it.
+Call ToolSearch with `query: "select:TeamCreate,TeamDelete,TaskCreate,TaskList,SendMessage"` **now, immediately before Step 7a** — not at session start. The scoring phase (Step 3) runs a long external subprocess, which causes context compression that drops deferred tool schemas loaded earlier in the session. Loading them here ensures they are fresh. The `Agent` tool is natively available — do **not** include it in ToolSearch queries.
+
+After ToolSearch returns, attempt `TeamCreate`. If `TeamCreate` raises an error or is not in the returned schemas, skip to **Step 7f (fallback path)** instead.
 
 ### 7a. Create the team
 
@@ -234,6 +236,22 @@ Call `TeamDelete` to clean up the team and task list.
 Save output paths reported by workers for the Final Report.
 
 Output base directory: `$JOB_DATA_ROOT/output/{YYYY-MM-DD}/`
+
+### 7f. Fallback path (TeamCreate/SendMessage unavailable)
+
+Use this path only if `TeamCreate` or `SendMessage` failed in Step 7a. This happens when context compression during the scoring phase drops the deferred tool registry and ToolSearch cannot restore it (a known limitation of long-running sessions).
+
+**Do not abandon the pipeline.** Instead:
+
+1. Call ToolSearch with `query: "select:TaskCreate,TaskList,TaskUpdate"` to load task tools.
+
+2. For each selected job, call `TaskCreate` with the same JSON payload described in Step 7b.
+
+3. Spawn one `resume-tailor` agent per selected job in parallel using the `Agent` tool (`run_in_background: true`). Each agent's prompt must include the full job description, output directory, and instruction to update its task to `completed` or `failed` when done. Agents cannot SendMessage back to you, so task status is the only signal.
+
+4. Poll `TaskList` every 60 seconds until all tasks reach `completed` or `failed`. If a task is stuck `in_progress` for more than 10 minutes with no change, mark it `failed` via `TaskUpdate` and note it in the Final Report.
+
+5. After all tasks settle, collect output paths from task descriptions and proceed to the Final Report. Skip `TeamDelete` (no team was created).
 
 ## Final Report
 
