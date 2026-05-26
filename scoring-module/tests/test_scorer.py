@@ -401,7 +401,8 @@ def test_score_batch_returns_count_on_partial_failure(tmp_path):
 
     with patch("scoring_module.scorer.anthropic.Anthropic", return_value=mock_client), \
          patch("scoring_module.scorer.DB_PATH", str(db_path)), \
-         patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
+         patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)), \
+         patch("scoring_module.scorer.MAX_RETRIES", 0):
         count = score_batch(str(batch_file))
 
     assert count == 2  # 1 failed, 2 succeeded

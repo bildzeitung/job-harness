@@ -17,7 +17,7 @@ def main(
     total = 0
     for batch_file in batch_files:
         total += score_batch(str(batch_file))
-    raise typer.Exit(0 if total >= 0 else 1)
+    raise typer.Exit(0 if total > 0 else 1)
 
 
 if __name__ == "__main__":

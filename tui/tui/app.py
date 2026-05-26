@@ -42,6 +42,7 @@ class JobViewerApp(App):
     def __init__(self, db_path: Path, **kwargs) -> None:
         super().__init__(**kwargs)
         self.db_path = db_path
+        self._engine = None
         self._postings: list = []
         self._details_visible = False
         self._job_col_key = None
@@ -61,8 +62,8 @@ class JobViewerApp(App):
         from tui.db import get_postings, make_engine
 
         try:
-            engine = make_engine(self.db_path)
-            self._postings = get_postings(engine)
+            self._engine = make_engine(self.db_path)
+            self._postings = get_postings(self._engine)
         except Exception as e:
             self.exit(f"Error reading database: {e}")
             return
@@ -87,11 +88,10 @@ class JobViewerApp(App):
         self.query_one("#output-panel").display = False
 
     def action_refresh(self) -> None:
-        from tui.db import get_postings, make_engine
+        from tui.db import get_postings
 
         try:
-            engine = make_engine(self.db_path)
-            self._postings = get_postings(engine)
+            self._postings = get_postings(self._engine)
         except Exception as e:
             self.notify(f"Refresh failed: {e}", severity="error")
             return
@@ -174,7 +174,7 @@ class JobViewerApp(App):
 
         try:
             proc = subprocess.Popen(
-                ["claude", prompt],
+                ["claude", "--print", prompt],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -200,7 +200,7 @@ class JobViewerApp(App):
         panel.display = not panel.display
 
     def action_mark_applied(self) -> None:
-        from tui.db import make_engine, update_status
+        from tui.db import update_status
 
         table = self.query_one("#jobs-table", DataTable)
         row = table.cursor_row
@@ -211,8 +211,7 @@ class JobViewerApp(App):
             self.notify("Already marked as applied", severity="warning")
             return
         try:
-            engine = make_engine(self.db_path)
-            update_status(engine, posting.url, "applied")
+            update_status(self._engine, posting.url, "applied")
         except Exception as e:
             self.notify(f"Failed to update status: {e}", severity="error")
             return
