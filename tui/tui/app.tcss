@@ -42,8 +42,3 @@ TabPane {
     background: $panel;
     padding: 0 1;
 }
-
-#output-content {
-    color: $text;
-    padding: 0;
-}

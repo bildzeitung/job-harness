@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-import subprocess
 from pathlib import Path
 
 from rich.text import Text
@@ -9,8 +7,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
-from textual import work
-from textual.worker import get_current_worker
+
+from tui.scorer_panel import ScorerPanel
 
 STATE_STYLES: dict[str, str] = {
     "new": "bold green",
@@ -24,7 +22,6 @@ STATE_STYLES: dict[str, str] = {
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
 _COL_PADDING = 6  # borders, scrollbar, gutters
-_ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 _SORT_MODES = ["state", "date", "title"]
 _SORT_INDICATOR = "▼"
@@ -65,8 +62,7 @@ class JobViewerApp(App):
                     yield DataTable(id="jobs-table", cursor_type="row", zebra_stripes=True)
                     with ScrollableContainer(id="details-panel"):
                         yield Static(id="details-content")
-                    with ScrollableContainer(id="output-panel"):
-                        yield Static(id="output-content")
+                    yield ScorerPanel(id="output-panel")
             with TabPane("Companies", id="companies"):
                 yield DataTable(id="companies-table", cursor_type="row", zebra_stripes=True)
         yield Footer()
@@ -229,11 +225,10 @@ class JobViewerApp(App):
             f"pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
         )
 
-        output = self.query_one("#output-content", Static)
-        output.update("")
-        self.query_one("#output-panel").display = True
+        panel = self.query_one("#output-panel", ScorerPanel)
+        panel.display = True
         self.notify(f"Launching prepare for {posting.company or posting.url}…")
-        self._run_claude(prompt, output)
+        panel.run_prompt(prompt)
 
     def action_score_new(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
@@ -254,81 +249,10 @@ class JobViewerApp(App):
             f"Title: {posting.title or 'unknown'}\n"
             f"Score this one posting only. Write the score to the database and set status to 'scored'."
         )
-        output = self.query_one("#output-content", Static)
-        output.update("")
-        self.query_one("#output-panel").display = True
+        panel = self.query_one("#output-panel", ScorerPanel)
+        panel.display = True
         self.notify(f"Scoring {posting.display_name}…")
-        self._run_claude(prompt, output)
-
-    @work(thread=True, exclusive=True)
-    def _run_claude(self, prompt: str, output: Static) -> None:
-        import os
-        import pty
-        import select as _select
-
-        lines: list[str] = []
-        self.call_from_thread(output.update, Text("Launching…"))
-
-        def _flush_line(raw: str) -> None:
-            text = _ANSI_ESCAPE.sub("", raw).rstrip()
-            if text:
-                lines.append(text)
-                self.call_from_thread(output.update, Text("\n".join(lines)))
-
-        master_fd, slave_fd = pty.openpty()
-        try:
-            proc = subprocess.Popen(
-                ["claude", "--print", prompt],
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                preexec_fn=os.setsid,
-                env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
-            )
-        except Exception as exc:
-            os.close(master_fd)
-            self.call_from_thread(output.update, Text(f"Error launching claude: {exc}"))
-            self.call_from_thread(self.notify, f"Launch failed: {exc}", severity="error")
-            return
-        finally:
-            os.close(slave_fd)
-
-        buf : str = ""
-        worker = get_current_worker()
-        try:
-            # Keep reading while the process lives and the app hasn't cancelled the worker
-            while proc.poll() is None and not worker.is_cancelled:
-                # 4. Use select() to wait up to 0.1 seconds for data to become available.
-                # This prevents os.read from blocking the thread indefinitely if the process is idle.
-                ready_to_read, _, _ = _select.select([master_fd], [], [], 0.05)
-                
-                if ready_to_read:
-                    # Data is waiting in the OS buffer, safe to read without blocking
-                    chunk = os.read(master_fd, 4096).decode(encoding="utf-8", errors="replace")
-                    if not chunk:
-                        break  # Stream reached End-Of-File (EOF)
-
-                    text = buf + chunk
-                    text = text.replace("\r\n", "\n").replace("\r", "\n")
-                    parts = text.split("\n")
-                    for part in parts[:-1]:
-                        _flush_line(part)
-                    buf = parts[-1]
-        except OSError:
-            # Raised by os.read when the PTY closes down completely
-            pass
-        finally:
-            # 5. Clean up the master file descriptor and terminate if stopped early
-            os.close(master_fd)
-            if proc.poll() is None:
-                proc.terminate()
-
-        if proc.returncode == 0:
-            self.call_from_thread(self.notify, "Done!", severity="information")
-        else:
-            self.call_from_thread(
-                self.notify, f"Failed (exit {proc.returncode})", severity="error"
-            )
+        panel.run_prompt(prompt)
 
     def action_toggle_output(self) -> None:
         panel = self.query_one("#output-panel")
