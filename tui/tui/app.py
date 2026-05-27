@@ -234,14 +234,27 @@ class JobViewerApp(App):
         self._run_claude(prompt)
 
     def action_score_new(self) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        if tabs.active != "jobs":
+            return
+        table = self.query_one("#jobs-table", DataTable)
+        row = table.cursor_row
+        if row < 0 or row >= len(self._postings):
+            return
+        posting = self._postings[row]
+        if posting.status != "new":
+            self.notify(f"Only 'new' jobs can be scored (this job is '{posting.status}')", severity="warning")
+            return
         prompt = (
-            "Use the job-preparer agent to score all postings currently in 'new' state. "
-            "Run Steps 1-3 only (query new postings, pre-filter hard disqualifiers, score remaining). "
-            "Do not present ranked results or run the preparation pipeline."
+            f"Use the job-scorer agent to score a single job posting. "
+            f"The posting URL is: {posting.url}\n"
+            f"Company: {posting.company or 'unknown'}\n"
+            f"Title: {posting.title or 'unknown'}\n"
+            f"Score this one posting only. Write the score to the database and set status to 'scored'."
         )
         self.query_one("#output-content", Static).update("")
         self.query_one("#output-panel").display = True
-        self.notify("Launching scoring pipeline for 'new' jobs…")
+        self.notify(f"Scoring {posting.display_name}…")
         self._run_claude(prompt)
 
     @work(thread=True, exclusive=True)
