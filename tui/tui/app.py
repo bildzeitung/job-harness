@@ -228,10 +228,11 @@ class JobViewerApp(App):
             f"pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
         )
 
-        self.query_one("#output-content", Static).update("")
+        output = self.query_one("#output-content", Static)
+        output.update("")
         self.query_one("#output-panel").display = True
         self.notify(f"Launching prepare for {posting.company or posting.url}…")
-        self._run_claude(prompt)
+        self._run_claude(prompt, output)
 
     def action_score_new(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
@@ -252,13 +253,14 @@ class JobViewerApp(App):
             f"Title: {posting.title or 'unknown'}\n"
             f"Score this one posting only. Write the score to the database and set status to 'scored'."
         )
-        self.query_one("#output-content", Static).update("")
+        output = self.query_one("#output-content", Static)
+        output.update("")
         self.query_one("#output-panel").display = True
         self.notify(f"Scoring {posting.display_name}…")
-        self._run_claude(prompt)
+        self._run_claude(prompt, output)
 
     @work(thread=True, exclusive=True)
-    def _run_claude(self, prompt: str) -> None:
+    def _run_claude(self, prompt: str, output: Static) -> None:
         import os
         import pty
         import select as _select
@@ -269,10 +271,9 @@ class JobViewerApp(App):
             text = _ANSI_ESCAPE.sub("", raw).rstrip()
             if text:
                 lines.append(text)
-                self.call_from_thread(
-                    self.query_one("#output-content", Static).update,
-                    "\n".join(lines),
-                )
+                # output is captured on the main thread before the worker starts —
+                # safe to use here without calling query_one from a thread.
+                self.call_from_thread(output.update, "\n".join(lines))
 
         master_fd, slave_fd = pty.openpty()
         try:
@@ -284,9 +285,17 @@ class JobViewerApp(App):
                 close_fds=True,
                 env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
             )
+        except Exception as exc:
             os.close(slave_fd)
+            os.close(master_fd)
+            self.call_from_thread(output.update, f"Error launching claude: {exc}")
+            self.call_from_thread(self.notify, f"Launch failed: {exc}", severity="error")
+            return
 
-            buf = b""
+        os.close(slave_fd)
+
+        buf = b""
+        try:
             while True:
                 try:
                     readable, _, _ = _select.select([master_fd], [], [], 0.05)
@@ -297,7 +306,6 @@ class JobViewerApp(App):
                         chunk = os.read(master_fd, 4096)
                     except OSError:
                         break  # slave closed — subprocess exited
-                    # Normalise \r\n and bare \r to \n, then drain complete lines.
                     text = (buf + chunk).decode("utf-8", errors="replace")
                     text = text.replace("\r\n", "\n").replace("\r", "\n")
                     parts = text.split("\n")
@@ -306,10 +314,13 @@ class JobViewerApp(App):
                     buf = parts[-1].encode("utf-8")
                 elif proc.poll() is not None:
                     break
-
+        except Exception as exc:
+            self.call_from_thread(
+                output.update, "\n".join(lines) + f"\n\nRead error: {exc}"
+            )
+        finally:
             if buf.strip():
                 _flush_line(buf.decode("utf-8", errors="replace"))
-        finally:
             try:
                 os.close(master_fd)
             except OSError:
