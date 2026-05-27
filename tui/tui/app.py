@@ -282,6 +282,7 @@ class JobViewerApp(App):
                 stdout=slave_fd,
                 stderr=slave_fd,
                 close_fds=True,
+                env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
             )
             os.close(slave_fd)
 
