@@ -1,0 +1,54 @@
+flowchart LR
+    subgraph INPUTS ["Your Inputs"]
+        direction TB
+        RESUME["Resume YAML"]
+        DISQ["Disqualifiers YAML"]
+    end
+
+    subgraph BOARDS ["External Sources"]
+        direction TB
+        LI["LinkedIn · Indeed"]
+        ADZ["Adzuna · ZipRecruiter"]
+        GH["Greenhouse · Lever"]
+        WEB["Web Research"]
+    end
+
+    subgraph SEEK ["Stage 1 — Seek    (job-seeker)"]
+        S["Search all sources in parallel<br>Deduplicate · insert new postings"]
+    end
+
+    DB[("postings.db")]
+
+    subgraph SCORE ["Stage 2 — Score    (job-preparer)"]
+        F["Pre-filter<br>hard disqualifiers → skip"]
+        SC["5-dimension fit score  1–100<br>Age + competition modifiers applied"]
+        F --> SC
+    end
+
+    SEL{{"Stage 3 — Select<br>You choose from top-ranked postings"}}
+
+    subgraph PREP ["Stage 4 — Prepare    (job-preparer workers · per job)"]
+        T["resume-tailor<br>ATS-targeted CV"]
+        C["cover-letter-creator<br>Personalised to role + company"]
+    end
+
+    subgraph OUT ["Output    (job-data/output/YYYY-MM-DD/)"]
+        RP["Resume PDF"]
+        CL["Cover Letter PDF"]
+        FR["final-report.md"]
+    end
+
+    BOARDS                      --> S
+    RESUME  -->|"search<br>guidance"| S
+    S       -->|"INSERT<br>new postings"| DB
+    DB      -->|"unscored<br>postings"| F
+    DISQ    -->|"keyword<br>blocklist"| F
+    RESUME  -->|"fit scoring<br>context"| SC
+    DISQ    -->|"score<br>modifiers"| SC
+    SC      --> SEL
+    SEL     --> T & C
+    RESUME  -->|"base document"| T
+    RESUME  -->|"voice + experience"| C
+    T       --> RP
+    C       --> CL
+    PREP    -->|"rank · URLs · status"| FR
