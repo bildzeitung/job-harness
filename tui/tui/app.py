@@ -246,37 +246,68 @@ class JobViewerApp(App):
 
     @work(thread=True, exclusive=True)
     def _run_claude(self, prompt: str) -> None:
+        import os
+        import pty
+        import select as _select
+
         lines: list[str] = []
 
-        def _update(line: str) -> None:
-            lines.append(_ANSI_ESCAPE.sub("", line).rstrip())
-            self.call_from_thread(
-                self.query_one("#output-content", Static).update,
-                "\n".join(lines),
-            )
+        def _flush_line(raw: str) -> None:
+            text = _ANSI_ESCAPE.sub("", raw).rstrip()
+            if text:
+                lines.append(text)
+                self.call_from_thread(
+                    self.query_one("#output-content", Static).update,
+                    "\n".join(lines),
+                )
 
+        master_fd, slave_fd = pty.openpty()
         try:
             proc = subprocess.Popen(
                 ["claude", "--print", prompt],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
             )
-            for line in proc.stdout:
-                _update(line)
-            proc.wait()
-            if proc.returncode == 0:
-                self.call_from_thread(self.notify, "Done!", severity="information")
-            else:
-                self.call_from_thread(
-                    self.notify, f"Failed (exit {proc.returncode})", severity="error"
-                )
-        except Exception as exc:
+            os.close(slave_fd)
+
+            buf = b""
+            while True:
+                try:
+                    readable, _, _ = _select.select([master_fd], [], [], 0.05)
+                except (OSError, ValueError):
+                    break
+                if readable:
+                    try:
+                        chunk = os.read(master_fd, 4096)
+                    except OSError:
+                        break  # slave closed — subprocess exited
+                    # Normalise \r\n and bare \r to \n, then drain complete lines.
+                    text = (buf + chunk).decode("utf-8", errors="replace")
+                    text = text.replace("\r\n", "\n").replace("\r", "\n")
+                    parts = text.split("\n")
+                    for part in parts[:-1]:
+                        _flush_line(part)
+                    buf = parts[-1].encode("utf-8")
+                elif proc.poll() is not None:
+                    break
+
+            if buf.strip():
+                _flush_line(buf.decode("utf-8", errors="replace"))
+        finally:
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+
+        proc.wait()
+        if proc.returncode == 0:
+            self.call_from_thread(self.notify, "Done!", severity="information")
+        else:
             self.call_from_thread(
-                self.query_one("#output-content", Static).update, f"Error: {exc}"
+                self.notify, f"Failed (exit {proc.returncode})", severity="error"
             )
-            self.call_from_thread(self.notify, f"Failed to launch claude: {exc}", severity="error")
 
     def action_toggle_output(self) -> None:
         panel = self.query_one("#output-panel")
