@@ -1,16 +1,11 @@
-flowchart LR
-    subgraph INPUTS ["Your Inputs"]
-        direction TB
-        RESUME["Resume YAML"]
-        DISQ["Disqualifiers YAML"]
-    end
+flowchart TD
+    RESUME(["Resume YAML"])
+    DISQ(["Disqualifiers YAML"])
 
     subgraph BOARDS ["External Sources"]
-        direction TB
-        LI["LinkedIn · Indeed"]
-        ADZ["Adzuna · ZipRecruiter"]
-        GH["Greenhouse · Lever"]
-        WEB["Web Research"]
+        direction LR
+        B1["LinkedIn · Indeed · Adzuna"]
+        B2["ZipRecruiter · Greenhouse · Lever · Web"]
     end
 
     subgraph SEEK ["Stage 1 — Seek    (job-seeker)"]
@@ -20,31 +15,33 @@ flowchart LR
     DB[("postings.db")]
 
     subgraph SCORE ["Stage 2 — Score    (job-preparer)"]
-        F["Pre-filter<br>hard disqualifiers → skip"]
-        SC["5-dimension fit score  1–100<br>Age + competition modifiers applied"]
+        F["Pre-filter: hard disqualifiers → skip"]
+        SC["5-dimension fit score  1–100<br>Age + competition modifiers"]
         F --> SC
     end
 
     SEL{{"Stage 3 — Select<br>You choose from top-ranked postings"}}
 
-    subgraph PREP ["Stage 4 — Prepare    (job-preparer workers · per job)"]
+    subgraph PREP ["Stage 4 — Prepare    (per job)"]
+        direction LR
         T["resume-tailor<br>ATS-targeted CV"]
         C["cover-letter-creator<br>Personalised to role + company"]
     end
 
     subgraph OUT ["Output    (job-data/output/YYYY-MM-DD/)"]
+        direction LR
         RP["Resume PDF"]
         CL["Cover Letter PDF"]
         FR["final-report.md"]
     end
 
-    BOARDS                      --> S
-    RESUME  -->|"search<br>guidance"| S
-    S       -->|"INSERT<br>new postings"| DB
-    DB      -->|"unscored<br>postings"| F
-    DISQ    -->|"keyword<br>blocklist"| F
-    RESUME  -->|"fit scoring<br>context"| SC
-    DISQ    -->|"score<br>modifiers"| SC
+    BOARDS  --> S
+    RESUME  -->|"search guidance"| S
+    S       -->|"INSERT new postings"| DB
+    DB      -->|"unscored postings"| F
+    DISQ    -->|"keyword blocklist"| F
+    RESUME  -->|"fit scoring context"| SC
+    DISQ    -->|"score modifiers"| SC
     SC      --> SEL
     SEL     --> T & C
     RESUME  -->|"base document"| T
@@ -52,3 +49,8 @@ flowchart LR
     T       --> RP
     C       --> CL
     PREP    -->|"rank · URLs · status"| FR
+
+    classDef resumeNode fill:#f4a261,stroke:#e76f51,color:#000
+    classDef disqNode   fill:#457b9d,stroke:#1d3557,color:#fff
+    class RESUME resumeNode
+    class DISQ   disqNode
