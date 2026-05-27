@@ -10,6 +10,7 @@ from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
 from textual import work
+from textual.worker import get_current_worker
 
 STATE_STYLES: dict[str, str] = {
     "new": "bold green",
@@ -281,51 +282,47 @@ class JobViewerApp(App):
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=slave_fd,
-                close_fds=True,
+                preexec_fn=os.setsid,
                 env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
             )
         except Exception as exc:
-            os.close(slave_fd)
             os.close(master_fd)
             self.call_from_thread(output.update, Text(f"Error launching claude: {exc}"))
             self.call_from_thread(self.notify, f"Launch failed: {exc}", severity="error")
             return
+        finally:
+            os.close(slave_fd)
 
-        os.close(slave_fd)
-
-        buf = b""
+        buf : str = ""
+        worker = get_current_worker()
         try:
-            while True:
-                try:
-                    readable, _, _ = _select.select([master_fd], [], [], 0.05)
-                except (OSError, ValueError):
-                    break
-                if readable:
-                    try:
-                        chunk = os.read(master_fd, 4096)
-                    except OSError:
-                        break  # slave closed — subprocess exited
-                    text = (buf + chunk).decode("utf-8", errors="replace")
+            # Keep reading while the process lives and the app hasn't cancelled the worker
+            while proc.poll() is None and not worker.is_cancelled:
+                # 4. Use select() to wait up to 0.1 seconds for data to become available.
+                # This prevents os.read from blocking the thread indefinitely if the process is idle.
+                ready_to_read, _, _ = _select.select([master_fd], [], [], 0.05)
+                
+                if ready_to_read:
+                    # Data is waiting in the OS buffer, safe to read without blocking
+                    chunk = os.read(master_fd, 4096).decode(encoding="utf-8", errors="replace")
+                    if not chunk:
+                        break  # Stream reached End-Of-File (EOF)
+
+                    text = buf + chunk
                     text = text.replace("\r\n", "\n").replace("\r", "\n")
                     parts = text.split("\n")
                     for part in parts[:-1]:
                         _flush_line(part)
-                    buf = parts[-1].encode("utf-8")
-                elif proc.poll() is not None:
-                    break
-        except Exception as exc:
-            self.call_from_thread(
-                output.update, Text("\n".join(lines) + f"\n\nRead error: {exc}")
-            )
+                    buf = parts[-1]
+        except OSError:
+            # Raised by os.read when the PTY closes down completely
+            pass
         finally:
-            if buf.strip():
-                _flush_line(buf.decode("utf-8", errors="replace"))
-            try:
-                os.close(master_fd)
-            except OSError:
-                pass
+            # 5. Clean up the master file descriptor and terminate if stopped early
+            os.close(master_fd)
+            if proc.poll() is None:
+                proc.terminate()
 
-        proc.wait()
         if proc.returncode == 0:
             self.call_from_thread(self.notify, "Done!", severity="information")
         else:
