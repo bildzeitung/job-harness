@@ -54,6 +54,7 @@ class Company(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     remote_confirmed: Mapped[bool | None] = mapped_column(Boolean)
     canada_confirmed: Mapped[bool | None] = mapped_column(Boolean)
+    researched_date: Mapped[str | None] = mapped_column(String)
     last_seen_date: Mapped[str | None] = mapped_column(String)
 
 

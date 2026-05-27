@@ -86,6 +86,7 @@ class JobViewerApp(App):
 
         self.query_one("#details-panel").display = False
         self.query_one("#output-panel").display = False
+        self.query_one("#jobs-table", DataTable).focus()
 
     def _col_label(self, label: str, sort_key: str) -> str:
         if self._sort_by == sort_key:
@@ -169,7 +170,12 @@ class JobViewerApp(App):
 
     def action_switch_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        tabs.active = "companies" if tabs.active == "jobs" else "jobs"
+        if tabs.active == "jobs":
+            tabs.active = "companies"
+            self.query_one("#companies-table", DataTable).focus()
+        else:
+            tabs.active = "jobs"
+            self.query_one("#jobs-table", DataTable).focus()
 
     def on_resize(self) -> None:
         if self._job_col_key is None:
