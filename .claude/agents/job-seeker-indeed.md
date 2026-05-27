@@ -1,7 +1,7 @@
 ---
 name: "job-seeker-indeed"
 description: "Searches Indeed for remote, Canada-eligible senior engineering roles using the Indeed MCP server. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_Indeed__get_job_details, ToolSearch
+tools: Read, Write, Bash, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_Indeed__get_job_details, ToolSearch, mcp__sqlite__write_query
 model: haiku
 color: green
 ---
@@ -49,6 +49,22 @@ Use `mcp__claude_ai_Indeed__search_jobs` with `country_code: "CA"` and `location
 For each search result, call `mcp__claude_ai_Indeed__get_job_details` with the job ID to fetch the full description. Verify eligibility (remote, Canada-eligible, seniority) before including.
 
 Aim for **15–25 unique postings** that pass the filters.
+
+## Write Company Records to DB
+
+Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
+
+For each unique company in the verified postings list, register it in the `companies` table. The `country_code: "CA"` search establishes Canada eligibility at the job level. Escape single quotes in company names by doubling them (`'` → `''`).
+
+```sql
+INSERT INTO companies (name, canada_confirmed, last_seen_date)
+VALUES ('{company}', 1, '{YYYY-MM-DD}')
+ON CONFLICT(name) DO UPDATE SET
+  canada_confirmed = MAX(COALESCE(companies.canada_confirmed, 0), 1),
+  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
+```
+
+One call per unique company. Print: `[INDEED] Wrote {N} company records to DB`
 
 ## Output
 

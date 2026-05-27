@@ -1,7 +1,7 @@
 ---
 name: "job-seeker-linkedin"
 description: "Searches LinkedIn for remote, Canada-eligible senior engineering roles using the LinkedIn MCP server. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, mcp__linkedin__search_jobs, mcp__linkedin__get_job_details, ToolSearch
+tools: Read, Write, Bash, mcp__linkedin__search_jobs, mcp__linkedin__get_job_details, ToolSearch, mcp__sqlite__write_query
 model: haiku
 color: blue
 ---
@@ -50,6 +50,21 @@ Use `mcp__linkedin__search_jobs` with varied queries to cover the candidate's do
 Run at least 5–6 queries to get broad coverage. For each result, call `mcp__linkedin__get_job_details` to fetch the full description. Check for any explicit US-only or US work authorization requirement — if present, discard. Otherwise keep it.
 
 Aim for **15–25 unique postings** that pass the filters.
+
+## Write Company Records to DB
+
+Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
+
+For each unique company in the verified postings list, register it in the `companies` table as a seed record. LinkedIn keeps ambiguous Canada cases for the scorer to evaluate, so do not assert `canada_confirmed` — only update `last_seen_date`. Escape single quotes in company names by doubling them (`'` → `''`).
+
+```sql
+INSERT INTO companies (name, last_seen_date)
+VALUES ('{company}', '{YYYY-MM-DD}')
+ON CONFLICT(name) DO UPDATE SET
+  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
+```
+
+One call per unique company. Print: `[LINKEDIN] Wrote {N} company records to DB`
 
 ## Output
 

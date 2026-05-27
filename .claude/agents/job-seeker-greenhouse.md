@@ -1,7 +1,7 @@
 ---
 name: "job-seeker-greenhouse"
 description: "Searches Greenhouse.io and Lever.co for remote, Canada-eligible senior engineering roles by querying their public job board APIs directly. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, WebFetch, ToolSearch
+tools: Read, Write, Bash, WebFetch, ToolSearch, mcp__sqlite__write_query
 model: sonnet
 color: purple
 ---
@@ -72,6 +72,28 @@ For every passing posting from either round:
 3. Capture the canonical URL (Greenhouse or Lever board URL)
 
 Aim for **10–20 unique, verified postings** across both rounds.
+
+## Write Company Records to DB
+
+Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
+
+For each unique company in the verified postings list, register it in the `companies` table. The board URL (from the slug and ATS type) is the company's direct career page — exactly what a future research agent needs to query postings directly without going through an aggregator. Escape single quotes in company names by doubling them (`'` → `''`).
+
+Derive the board URL from the slug and ATS:
+- Greenhouse: `https://boards.greenhouse.io/{slug}`
+- Lever: `https://jobs.lever.co/{slug}`
+
+```sql
+INSERT INTO companies (name, remote_confirmed, canada_confirmed, notes, last_seen_date)
+VALUES ('{company}', 1, 1, 'Hiring on {Greenhouse|Lever}: {board_url}', '{YYYY-MM-DD}')
+ON CONFLICT(name) DO UPDATE SET
+  remote_confirmed = MAX(COALESCE(companies.remote_confirmed, 0), 1),
+  canada_confirmed = MAX(COALESCE(companies.canada_confirmed, 0), 1),
+  notes = CASE WHEN companies.notes IS NULL OR companies.notes = '' THEN excluded.notes ELSE companies.notes END,
+  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
+```
+
+One call per unique company. Print: `[GREENHOUSE] Wrote {N} company records to DB`
 
 ## Output
 
