@@ -1,26 +1,25 @@
 """Tests for email_parser.parser"""
 
-import pytest
 
 from email_parser.parser import (
-    DEFAULT_SENIORITY_KEYWORDS,
     filter_by_seniority,
     parse,
 )
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _card(job_id: str, title: str, company: str, location: str = "Toronto, ON · Remote") -> str:
     """Minimal HTML job card matching LinkedIn alert email structure."""
     return (
         f'<a href="https://www.linkedin.com/comm/jobs/view/{job_id}?trackingId=abc123">'
-        f'{title}</a>'
-        f'<span>{company} · {location}</span>'
+        f"{title}</a>"
+        f"<span>{company} · {location}</span>"
     )
 
 
 # ── parse — anchor-based extraction ──────────────────────────────────────────
+
 
 def test_parse_extracts_title_from_anchor():
     jobs = parse(_card("111", "Senior Software Engineer", "Acme Corp"))
@@ -44,9 +43,8 @@ def test_parse_deduplicates_same_job_id():
 
 
 def test_parse_multiple_cards():
-    html = (
-        _card("1", "Senior Software Engineer, Cloud", "Redpanda Data")
-        + _card("2", "Principal Platform Engineer", "StreamSets")
+    html = _card("1", "Senior Software Engineer, Cloud", "Redpanda Data") + _card(
+        "2", "Principal Platform Engineer", "StreamSets"
     )
     jobs = parse(html)
     assert len(jobs) == 2
@@ -57,9 +55,9 @@ def test_parse_multiple_cards():
 
 def test_parse_strips_html_entities_from_title():
     html = (
-        f'<a href="https://www.linkedin.com/comm/jobs/view/5555">'
-        f'Senior Software Engineer &mdash; AI &amp; Platform</a>'
-        f'<span>Acme · Remote</span>'
+        '<a href="https://www.linkedin.com/comm/jobs/view/5555">'
+        "Senior Software Engineer &mdash; AI &amp; Platform</a>"
+        "<span>Acme · Remote</span>"
     )
     jobs = parse(html)
     assert "AI" in jobs[0]["title"]
@@ -72,9 +70,9 @@ def test_parse_strips_html_entities_from_title():
 
 def test_parse_strips_inner_tags_from_title():
     html = (
-        f'<a href="https://www.linkedin.com/comm/jobs/view/5556">'
-        f'<strong>Senior</strong> Software Engineer</a>'
-        f'<p>Acme Corp · Remote</p>'
+        '<a href="https://www.linkedin.com/comm/jobs/view/5556">'
+        "<strong>Senior</strong> Software Engineer</a>"
+        "<p>Acme Corp · Remote</p>"
     )
     jobs = parse(html)
     assert jobs[0]["title"] == "Senior Software Engineer"
@@ -83,9 +81,9 @@ def test_parse_strips_inner_tags_from_title():
 def test_parse_skips_view_job_anchors():
     # "View job" link for same ID should not count as the title
     html = (
-        f'<a href="https://www.linkedin.com/comm/jobs/view/888">View job</a>'
-        f'<a href="https://www.linkedin.com/comm/jobs/view/777">Senior Engineer</a>'
-        f'<span>Acme · Remote</span>'
+        '<a href="https://www.linkedin.com/comm/jobs/view/888">View job</a>'
+        '<a href="https://www.linkedin.com/comm/jobs/view/777">Senior Engineer</a>'
+        "<span>Acme · Remote</span>"
     )
     jobs = parse(html)
     titles = {j["title"] for j in jobs}
@@ -98,6 +96,7 @@ def test_parse_returns_empty_for_no_jobs():
 
 
 # ── parse — bare-URL fallback ─────────────────────────────────────────────────
+
 
 def test_parse_fallback_bare_url():
     # URL appears in plain text, not in an <a> tag
@@ -130,6 +129,7 @@ def test_parse_anchor_takes_priority_over_bare_url():
 
 # ── parse — company extraction edge cases ────────────────────────────────────
 
+
 def test_parse_company_with_ampersand():
     jobs = parse(_card("444", "Staff Engineer", "AT&T"))
     assert jobs[0]["company"] == "AT&T"
@@ -141,9 +141,8 @@ def test_parse_company_with_exclamation():
 
 
 def test_parse_company_not_bleed_into_next_card():
-    html = (
-        _card("101", "Sr. Platform Engineer", "Aha!")
-        + _card("102", "Software Engineer I", "Startup Co")
+    html = _card("101", "Sr. Platform Engineer", "Aha!") + _card(
+        "102", "Software Engineer I", "Startup Co"
     )
     jobs = parse(html)
     by_id = {j["url"].split("/")[-1]: j for j in jobs}
@@ -210,6 +209,7 @@ def test_filter_preserves_order():
 
 
 # ── integration: parse + filter ───────────────────────────────────────────────
+
 
 def test_integration_real_like_email():
     html = (

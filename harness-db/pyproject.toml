@@ -10,7 +10,7 @@ dependencies = [
 packages = ["harness_db"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "nox>=2024.3.2"]
+dev = ["pytest>=8.0", "nox>=2024.3.2", "ruff>=0.6"]
 
 [build-system]
 requires = ["hatchling"]

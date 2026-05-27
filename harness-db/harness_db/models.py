@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Boolean, Integer, String, Text, create_engine
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -56,6 +56,19 @@ class Company(Base):
     canada_confirmed: Mapped[bool | None] = mapped_column(Boolean)
     researched_date: Mapped[str | None] = mapped_column(String)
     last_seen_date: Mapped[str | None] = mapped_column(String)
+    careers_url: Mapped[str | None] = mapped_column(String)
+    fetch_notes: Mapped[str | None] = mapped_column(Text)
+
+
+class CompanyPosting(Base):
+    """Links each posting to its hiring company (1 company : N postings)."""
+
+    __tablename__ = "company_postings"
+
+    url: Mapped[str] = mapped_column(String, ForeignKey("postings.url"), primary_key=True)
+    company_name: Mapped[str] = mapped_column(String, ForeignKey("companies.name"))
+
+    __table_args__ = (Index("ix_company_postings_company_name", "company_name"),)
 
 
 def make_engine(db_path: Path):

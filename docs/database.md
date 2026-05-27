@@ -2,9 +2,10 @@
 
 The harness uses a single SQLite database at `$JOB_DATA_ROOT/jobs/postings.db`.
 
-Two tables:
+Three tables:
 - **`postings`** — one row per job posting URL; tracks the full scoring/selection/application lifecycle.
 - **`companies`** — one row per hiring company; persists research findings and remote/Canada confirmation across pipeline runs.
+- **`company_postings`** — links each posting to its hiring company (1 company : N postings).
 
 ## Table: `postings`
 
@@ -146,7 +147,9 @@ CREATE TABLE companies (
     canada_confirmed   INTEGER  DEFAULT 0,
     notes              TEXT,
     researched_date    TEXT,
-    last_seen_date     TEXT
+    last_seen_date     TEXT,
+    careers_url        TEXT,
+    fetch_notes        TEXT
 )
 ```
 
@@ -160,6 +163,26 @@ CREATE TABLE companies (
 | `notes` | TEXT | 1–2 sentence research summary: funding stage, domain focus, team size, hiring signals. Written by `job-seeker-research`; preserved on subsequent upserts if non-empty. |
 | `researched_date` | TEXT | ISO 8601 date `job-seeker-research` last wrote a notes entry for this company. |
 | `last_seen_date` | TEXT | ISO 8601 date any pipeline agent last encountered a posting from this company. Updated by `job-scorer` on every scoring run. |
+| `careers_url` | TEXT | At least one URL to where the company posts its jobs (careers page or ATS board). Written by `job-seeker-company`. NULL until researched. |
+| `fetch_notes` | TEXT | Notes on how to fetch jobs and job descriptions from the company's site (ATS type, API endpoint, pagination), or the reason the careers URL could not be found. Written by `job-seeker-company`. |
+
+---
+
+## Table: `company_postings`
+
+Links each posting to its hiring company. One row per posting URL (`url` is the primary key), so the relationship is **1 company : N postings**. Written by `job-seeker` immediately after inserting a posting; the matching `companies` row is always inserted first.
+
+```sql
+CREATE TABLE company_postings (
+    url           TEXT     PRIMARY KEY REFERENCES postings(url),
+    company_name  TEXT     REFERENCES companies(name)
+)
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `url` | TEXT PK | Posting URL. Foreign key to `postings.url`. Primary key — each posting links to exactly one company. |
+| `company_name` | TEXT | Hiring company name. Foreign key to `companies.name`. Indexed for company → postings lookups. |
 
 ### Writers and flag promotion rules
 

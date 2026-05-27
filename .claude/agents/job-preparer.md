@@ -39,12 +39,12 @@ Call this the **needs-scoring list**. If this list is empty, skip Steps 2–3 an
 
 Before writing batch files, filter the needs-scoring list to eliminate hard disqualifiers. This reduces scoring cost without losing any good candidates.
 
-Examine each posting's `title` and `description_summary`:
+The hard-disqualifier keyword lists are **user-configurable** and live in one place: `$JOB_DATA_ROOT/disqualifiers.yaml`. Read that file (`Read $JOB_DATA_ROOT/disqualifiers.yaml`) and use its `prefilter` section. Do not hard-code keyword lists here; the file is the source of truth so the user can tune them.
 
-**Hard disqualifiers** — mark `status = 'skipped'` in the DB and remove from the list permanently:
-- Contains (case-insensitive): "US work authorization", "authorized to work in the US", "US citizens only", "must be authorized to work in the United States", "must relocate", "relocation required", "on-site only", "no remote"
-- Title contains " intern " or "internship" (as the role itself, not e.g. "internal")
-- Title contains "entry-level", "entry level", or " junior " (but NOT if also containing "senior", "staff", or "principal" — those are seniority qualifiers, not contradictions)
+Examine each posting's `title` and `description_summary`. Mark `status = 'skipped'` in the DB and remove from the list permanently if any of these match (all matching is case-insensitive):
+- **`prefilter.description_phrases`** — any phrase appears in the title or `description_summary`.
+- **`prefilter.title_terms`** — any term appears in the title (as the role itself, not e.g. "internal").
+- **`prefilter.title_terms_unless_senior`** — any term appears in the title, UNLESS the title also contains one of `prefilter.seniority_exceptions` (e.g. "senior", "staff", "principal" — those are seniority qualifiers, not contradictions).
 
 Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool if not already loaded. For each hard-disqualified posting:
 ```sql

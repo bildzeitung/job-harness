@@ -1,7 +1,7 @@
 rendercv[full]
--e ./harness-db
--e ./scoring-module
--e ./email-parser
--e ./adzuna-search
--e ./tui
+-e ./harness-db[dev]
+-e ./scoring-module[dev]
+-e ./email-parser[dev]
+-e ./adzuna-search[dev]
+-e ./tui[dev]
 linkedin-scraper-mcp

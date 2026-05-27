@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⛔ STOP — WORK IN A WORKTREE, NEVER ON `main`
+
+**EVERY change to this repository — code, docs, agents, configs, ANYTHING — MUST be made in a git worktree, NEVER directly on `main`.** This is non-negotiable and has no exceptions.
+
+Before editing, creating, or deleting a single file, you MUST first create/enter a worktree (use `EnterWorktree`, or the plan-mode worktree isolation option). Worktrees for this repo live under `.claude/worktrees/`.
+
+If you find yourself about to run `Edit`, `Write`, or any mutating command while on `main`: **STOP.** Create the worktree first, then do the work there. Editing on `main` is a mistake even if the task seems small, even if the user didn't repeat the instruction, and even if you're "just fixing one thing." When in doubt, confirm you are NOT on `main` before your first write.
+
 ## What This Is
 
 A [RenderCV](https://github.com/rendercv/rendercv)-based resume project. The source of truth is the CV YAML file, validated against the RenderCV v2.8 JSON schema. All outputs (`rendercv_output/`) are generated artifacts — never edit them directly.
@@ -22,6 +30,10 @@ The resume file path is configured as an environment variable. Each user sets th
 ```
 
 Agents read this at runtime via `bash -c 'echo $RESUME_FILE'`. This makes the harness shareable — clone the repo, set `RESUME_FILE`, and it works for any resume.
+
+### Disqualifiers
+
+The pipeline's hard disqualifiers live in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It holds both the pre-filter keyword lists (`prefilter`, used by `job-preparer` to mark postings `skipped` before scoring) and the scoring modifiers (`scoring_modifiers`, applied by the scorer during scoring). Edit this file to tune disqualifier behavior — it is the single source of truth read by `scoring_module`, `job-scorer`, and `job-preparer`. If the file is missing it is seeded from `scoring-module/scoring_module/disqualifiers.default.yaml`.
 
 **`ANTHROPIC_API_KEY` is not required.** The `scoring_module` Python script authenticates by falling back to the OAuth token in `~/.claude/.credentials.json` (the same session Claude Code uses). If you do have an API key, setting it takes priority.
 
@@ -51,6 +63,7 @@ Twelve agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
 - **job-seeker-email** — Reads the most recent LinkedIn job alert email from Gmail (`jobalerts-noreply@linkedin.com`), extracts postings, and labels the email with `AI`. Requires Gmail MCP OAuth. Use via `/job-search-email` skill — not part of the main pipeline.
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
+- **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
 - **job-scorer** — Scores a single job posting 1–100 against the CV. Saves reports to `job-data/jobs/reports/`.
 - **job-preparer** — Team lead: scores all postings, presents top 5 (min score 75) to the user for selection, creates an agent team, assigns one task per selected job, monitors workers, tears down the team when done. Writes a final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`.
 - **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF → cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.

@@ -69,13 +69,16 @@ def search(
     with httpx.Client(timeout=timeout) as client:
         for q in effective_queries:
             try:
-                resp = client.get(BASE_URL, params={
-                    "app_id": app_id,
-                    "app_key": app_key,
-                    "results_per_page": results_per_page,
-                    "what": q,
-                    "full_time": 1,
-                })
+                resp = client.get(
+                    BASE_URL,
+                    params={
+                        "app_id": app_id,
+                        "app_key": app_key,
+                        "results_per_page": results_per_page,
+                        "what": q,
+                        "full_time": 1,
+                    },
+                )
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as e:
@@ -101,12 +104,14 @@ def search(
                     continue
 
                 seen.add(url)
-                results.append({
-                    "title": title,
-                    "company": job.get("company", {}).get("display_name", ""),
-                    "url": url,
-                    "post_date": job.get("created", "")[:10],
-                    "description_summary": description[:300],
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "company": job.get("company", {}).get("display_name", ""),
+                        "url": url,
+                        "post_date": job.get("created", "")[:10],
+                        "description_summary": description[:300],
+                    }
+                )
 
     return results

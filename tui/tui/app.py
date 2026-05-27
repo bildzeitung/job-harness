@@ -37,7 +37,7 @@ class JobViewerApp(App):
         Binding("p", "prepare_job", "Prepare"),
         Binding("a", "mark_applied", "Applied"),
         Binding("S", "score_new", "Score New"),
-        Binding("o", "toggle_output", "Output", show=False),
+        Binding("o", "toggle_output", "Output", show=True),
         Binding("j", "scroll_details_down", "Scroll ↓", show=False),
         Binding("k", "scroll_details_up", "Scroll ↑", show=False),
     ]
@@ -96,7 +96,9 @@ class JobViewerApp(App):
         job_width = max(20, self.size.width - _DATE_WIDTH - _STATE_WIDTH - _COL_PADDING)
         self._job_col_key = table.add_column(self._col_label("Job", "title"), width=job_width)
         self._date_col_key = table.add_column(self._col_label("Date", "date"), width=_DATE_WIDTH)
-        self._state_col_key = table.add_column(self._col_label("State", "state"), width=_STATE_WIDTH)
+        self._state_col_key = table.add_column(
+            self._col_label("State", "state"), width=_STATE_WIDTH
+        )
 
         for posting in self._postings:
             status = posting.status or "new"
@@ -119,8 +121,16 @@ class JobViewerApp(App):
         table.add_column("Notes")
 
         for company in self._companies:
-            remote = "✓" if company.remote_confirmed else ("✗" if company.remote_confirmed is False else "—")
-            canada = "✓" if company.canada_confirmed else ("✗" if company.canada_confirmed is False else "—")
+            remote = (
+                "✓"
+                if company.remote_confirmed
+                else ("✗" if company.remote_confirmed is False else "—")
+            )
+            canada = (
+                "✓"
+                if company.canada_confirmed
+                else ("✗" if company.canada_confirmed is False else "—")
+            )
             last_seen = (company.last_seen_date or "—")[:10]
             table.add_row(
                 company.name or "—",
@@ -155,6 +165,7 @@ class JobViewerApp(App):
         idx = (_SORT_MODES.index(self._sort_by) + 1) % len(_SORT_MODES)
         self._sort_by = _SORT_MODES[idx]
         from tui.db import get_postings
+
         try:
             self._postings = get_postings(self._engine, self._sort_by)
         except Exception as e:
@@ -240,7 +251,10 @@ class JobViewerApp(App):
             return
         posting = self._postings[row]
         if posting.status != "new":
-            self.notify(f"Only 'new' jobs can be scored (this job is '{posting.status}')", severity="warning")
+            self.notify(
+                f"Only 'new' jobs can be scored (this job is '{posting.status}')",
+                severity="warning",
+            )
             return
         prompt = (
             f"Use the job-scorer agent to score a single job posting. "
@@ -299,10 +313,7 @@ class JobViewerApp(App):
         if posting.final_score is not None:
             modifier = posting.modifier or 0
             base = posting.base_score if posting.base_score is not None else "?"
-            lines.append(
-                f"Score:    {posting.final_score}"
-                f"  (base {base}, modifier {modifier:+d})"
-            )
+            lines.append(f"Score:    {posting.final_score}  (base {base}, modifier {modifier:+d})")
         lines.append(f"Platform: {posting.platform or '—'}")
         lines.append(f"Location: {posting.location_note or '—'}")
         if posting.employment_type:

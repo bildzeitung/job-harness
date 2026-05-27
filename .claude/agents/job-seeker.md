@@ -64,16 +64,25 @@ Use ToolSearch with `query: "select:mcp__sqlite__create_table"` to load the tool
   selected_date TEXT, status TEXT DEFAULT 'new'
   ```
 
-Then create the **companies** table (cross-run company intelligence — persists research findings, remote/Canada confirmation, and last-seen date across pipeline runs):
+Then create the **companies** table (cross-run company intelligence — persists research findings, remote/Canada confirmation, last-seen date, and careers-page intel across pipeline runs):
 - **Table name**: `companies`
 - **Columns definition**:
   ```
   name TEXT PRIMARY KEY, remote_confirmed INTEGER DEFAULT 0,
   canada_confirmed INTEGER DEFAULT 0, notes TEXT,
-  researched_date TEXT, last_seen_date TEXT
+  researched_date TEXT, last_seen_date TEXT,
+  careers_url TEXT, fetch_notes TEXT
   ```
 
-If either table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
+Then create the **company_postings** linking table (links each posting to its hiring company — 1 company : N postings):
+- **Table name**: `company_postings`
+- **Columns definition**:
+  ```
+  url TEXT PRIMARY KEY REFERENCES postings(url),
+  company_name TEXT REFERENCES companies(name)
+  ```
+
+If a table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
 
 ## Step 0c: Load Sources Configuration
 
@@ -83,6 +92,18 @@ If the file exists: parse its `enabled` array and store as `enabled_sources`.
 If the file does not exist or cannot be read: default to all 6 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "research"]`.
 
 Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
+
+## Step 0d: Ensure Disqualifiers Config Exists
+
+The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are centralized in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. If it does not exist, seed it from the bundled default so downstream agents (`job-preparer`, `job-scorer`) and the scoring script can read it:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
+[ -e "$DEST" ] || cp "$PROJECT_ROOT/scoring-module/scoring_module/disqualifiers.default.yaml" "$DEST"
+```
+
+Do not overwrite an existing copy — the user may have tuned it.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 
@@ -181,14 +202,23 @@ Save the merged, deduplicated list to `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.j
 
 Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the tool.
 
-For each posting in the deduplicated list, call `mcp__sqlite__write_query` with an `INSERT OR IGNORE` statement. Today's date is `first_seen`. Escape single quotes in string values by doubling them (`'` → `''`). Use SQL `NULL` (not the string `'null'`) for unknown integers and missing text.
+For each posting in the deduplicated list, run **three** `INSERT OR IGNORE` statements **in this order** — the company row MUST be inserted before the posting row, and the link row last. Today's date is `first_seen`. Escape single quotes in string values by doubling them (`'` → `''`). Use SQL `NULL` (not the string `'null'`) for unknown integers and missing text.
 
-```sql
-INSERT OR IGNORE INTO postings (url, title, company, platform, post_date, applicant_count, employment_type, location_note, description_summary, job_description_text, first_seen, status)
-VALUES ('https://...', 'Principal Software Engineer', 'Acme Corp', 'linkedin', '2026-05-19', NULL, 'full-time', 'Remote, Canada OK', '2-3 sentence summary', NULL, '2026-05-19', 'new')
-```
+1. **Company first** — guarantees the company row exists before the posting and the link reference it. Only the name is set here; `job-seeker-research`, `job-scorer`, and `job-seeker-company` fill in the rest later.
+   ```sql
+   INSERT OR IGNORE INTO companies (name, last_seen_date) VALUES ('Acme Corp', '2026-05-19')
+   ```
+2. **Posting next**:
+   ```sql
+   INSERT OR IGNORE INTO postings (url, title, company, platform, post_date, applicant_count, employment_type, location_note, description_summary, job_description_text, first_seen, status)
+   VALUES ('https://...', 'Principal Software Engineer', 'Acme Corp', 'linkedin', '2026-05-19', NULL, 'full-time', 'Remote, Canada OK', '2-3 sentence summary', NULL, '2026-05-19', 'new')
+   ```
+3. **Link row last** — one row per job:
+   ```sql
+   INSERT OR IGNORE INTO company_postings (url, company_name) VALUES ('https://...', 'Acme Corp')
+   ```
 
-Set `job_description_text` to the full description text from the sub-agent's output if it was provided, or `NULL` if not. `INSERT OR IGNORE` silently discards any URL already in the table (safety net against race conditions).
+Set `job_description_text` to the full description text from the sub-agent's output if it was provided, or `NULL` if not. `INSERT OR IGNORE` silently discards any URL already in the table (safety net against race conditions). Skip the company and link inserts for any posting whose `company` is empty/unknown.
 
 ## Step 6: Report
 

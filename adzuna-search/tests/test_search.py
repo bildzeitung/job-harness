@@ -1,7 +1,6 @@
 """Tests for adzuna_search.search"""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -63,6 +62,7 @@ def _mock_client(jobs: list[dict]):
 
 # ── load_candidate_summary ────────────────────────────────────────────────────
 
+
 def test_load_raises_when_env_unset(monkeypatch):
     monkeypatch.delenv("JOB_DATA_ROOT", raising=False)
     with pytest.raises(RuntimeError, match="JOB_DATA_ROOT"):
@@ -83,6 +83,7 @@ def test_load_returns_parsed_dict(monkeypatch, tmp_path):
 
 # ── queries_from_summary ──────────────────────────────────────────────────────
 
+
 def test_queries_appends_remote():
     queries = queries_from_summary(SUMMARY)
     assert all(q.endswith(" remote") for q in queries)
@@ -101,6 +102,7 @@ def test_queries_includes_each_title():
 
 # ── seniority_keywords_from_summary ──────────────────────────────────────────
 
+
 def test_seniority_keywords_are_lowercase():
     keywords = seniority_keywords_from_summary(SUMMARY)
     assert all(kw == kw.lower() for kw in keywords)
@@ -113,53 +115,67 @@ def test_seniority_keywords_count():
 
 # ── filter predicates ─────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("text,expected", [
-    ("Fully remote role", True),
-    ("Remote-first company", True),
-    ("On-site in Toronto", False),
-    ("Hybrid work arrangement", False),
-])
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Fully remote role", True),
+        ("Remote-first company", True),
+        ("On-site in Toronto", False),
+        ("Hybrid work arrangement", False),
+    ],
+)
 def test_is_remote(text, expected):
     assert _is_remote(text) is expected
 
 
-@pytest.mark.parametrize("title,expected", [
-    ("Principal Software Engineer", True),
-    ("Staff Engineer", True),
-    ("Cloud Architect", True),
-    ("Senior Staff Engineer", True),
-    ("Software Developer II", False),
-    ("Junior Engineer", False),
-])
+@pytest.mark.parametrize(
+    "title,expected",
+    [
+        ("Principal Software Engineer", True),
+        ("Staff Engineer", True),
+        ("Cloud Architect", True),
+        ("Senior Staff Engineer", True),
+        ("Software Developer II", False),
+        ("Junior Engineer", False),
+    ],
+)
 def test_is_senior(title, expected):
     keywords = seniority_keywords_from_summary(SUMMARY)
     assert _is_senior(title, keywords) is expected
 
 
-@pytest.mark.parametrize("title,expected", [
-    ("Junior Software Engineer", True),
-    ("Intern, Platform Team", True),
-    ("Entry level developer", True),
-    ("Entry-Level Engineer", True),
-    ("Senior Engineer", False),
-    ("Principal Architect", False),
-])
+@pytest.mark.parametrize(
+    "title,expected",
+    [
+        ("Junior Software Engineer", True),
+        ("Intern, Platform Team", True),
+        ("Entry level developer", True),
+        ("Entry-Level Engineer", True),
+        ("Senior Engineer", False),
+        ("Principal Architect", False),
+    ],
+)
 def test_is_junior(title, expected):
     assert _is_junior(title) is expected
 
 
-@pytest.mark.parametrize("text,expected", [
-    ("Open to Canadian candidates", True),
-    ("Remote, worldwide", True),
-    ("US only — must have US work authorization", False),
-    ("US citizens only", False),
-    ("Must be located in US", False),
-])
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Open to Canadian candidates", True),
+        ("Remote, worldwide", True),
+        ("US only — must have US work authorization", False),
+        ("US citizens only", False),
+        ("Must be located in US", False),
+    ],
+)
 def test_is_canada_eligible(text, expected):
     assert _is_canada_eligible(text) is expected
 
 
 # ── search ────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def env(monkeypatch, tmp_path):

@@ -13,6 +13,7 @@ from typing import Any
 
 import anthropic
 import httpx
+import yaml
 from harness_db.models import Posting, make_engine
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
@@ -30,16 +31,68 @@ JD_TRUNCATE_LENGTH = 8000
 JD_TRUNCATE_WARN_THRESHOLD = 7900
 
 
+_DEFAULT_DISQUALIFIERS = Path(__file__).parent / "disqualifiers.default.yaml"
+
+
+def _load_disqualifiers() -> dict[str, Any]:
+    """Load the user-editable disqualifiers config from JOB_DATA_ROOT.
+
+    Seeds the live copy from the bundled default on first run so the file is
+    always present and editable in one place.
+    """
+    if not JOB_DATA_ROOT:
+        raise RuntimeError(
+            "JOB_DATA_ROOT not set — needed to read disqualifiers.yaml. "
+            "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
+        )
+    live = Path(JOB_DATA_ROOT) / "disqualifiers.yaml"
+    if not live.exists():
+        live.write_text(_DEFAULT_DISQUALIFIERS.read_text())
+    with open(live) as f:
+        return yaml.safe_load(f) or {}
+
+
+def _render_disqualifiers(config: dict[str, Any]) -> str:
+    lines = []
+    for d in config.get("scoring_modifiers", []):
+        examples = ", ".join(d.get("examples", []))
+        suffix = f" ({examples})" if examples else ""
+        lines.append(f"- {d['name']}{suffix}: {d['modifier']}")
+    lines.append("- No disqualifiers: 0")
+    return "\n".join(lines)
+
+
+def _format_candidate_profile(profile: dict[str, Any]) -> str:
+    """Build the profile text block from the structured candidate-summary.json fields."""
+    req = profile.get("requirements", {})
+    lines = [
+        f"Name: {profile.get('name', '')}",
+        f"Headline: {profile.get('headline', '')}",
+        f"Location: {profile.get('location', '')}",
+        f"Experience: {profile.get('years_experience', '?')} years",
+        f"Notable: {profile.get('notable', '')}",
+        f"Stack: {', '.join(profile.get('stack', []))}",
+        f"Domains: {', '.join(profile.get('domains', []))}",
+        f"Target titles: {', '.join(profile.get('target_titles', []))}",
+        f"Requirements: work_type={req.get('work_type', '')}; "
+        f"eligibility={req.get('eligibility', '')}; "
+        f"employment={', '.join(req.get('employment', []))}; "
+        f"exclude={', '.join(req.get('exclude', []))}",
+    ]
+    return "\n".join(lines)
+
+
 def _load_system_prompt() -> str:
     if not JOB_DATA_ROOT:
         raise RuntimeError(
-            "JOB_DATA_ROOT not set — needed to read candidate_summary.json. "
+            "JOB_DATA_ROOT not set — needed to read candidate-summary.json. "
             "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
         )
-    with open(Path(JOB_DATA_ROOT) / "candidate_summary.json") as f:
+    with open(Path(JOB_DATA_ROOT) / "candidate-summary.json") as f:
         profile = json.load(f)
     template = (Path(__file__).parent / "system_prompt.txt").read_text()
-    return template.replace("{{CANDIDATE_PROFILE}}", profile["profile_text"])
+    template = template.replace("{{CANDIDATE_PROFILE}}", _format_candidate_profile(profile))
+    return template.replace("{{DISQUALIFIERS}}", _render_disqualifiers(_load_disqualifiers()))
 
 
 _SYSTEM_PROMPT = _load_system_prompt()
@@ -120,7 +173,9 @@ def _competition_modifier(applicant_count: int | None) -> int:
 def _fetch_jd(url: str) -> str | None:
     try:
         resp = httpx.get(
-            url, timeout=15, follow_redirects=True,
+            url,
+            timeout=15,
+            follow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0 (compatible; job-scorer/1.0)"},
         )
         if resp.status_code == 200:
@@ -177,9 +232,16 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
         scored = _parse_json_response(resp.content[0].text)
     except (json.JSONDecodeError, IndexError, AttributeError):
         scored = {
-            "dimension_scores": {k: 5 for k in
-                                  ("technical_fit", "seniority_match", "domain_fit",
-                                   "remote_canada_confirmed", "role_clarity")},
+            "dimension_scores": {
+                k: 5
+                for k in (
+                    "technical_fit",
+                    "seniority_match",
+                    "domain_fit",
+                    "remote_canada_confirmed",
+                    "role_clarity",
+                )
+            },
             "base_score": 50,
             "disqualifier_modifier": 0,
             "scoring_notes": "JSON parse failed; default score applied",
@@ -245,9 +307,7 @@ def _update_db(engine, result: dict[str, Any]) -> None:
                 )
             )
             if r.rowcount == 0:
-                raise ValueError(
-                    f"No DB row found for URL {result['url']!r}; score not persisted"
-                )
+                raise ValueError(f"No DB row found for URL {result['url']!r}; score not persisted")
             session.commit()
 
 
@@ -275,8 +335,10 @@ def score_batch(batch_file: str) -> int:
         result = _score_one(client, posting)
         _save_report(result, reports_dir)
         _update_db(engine, result)
-        print(f"[SCORED] {result['company']} — {result['title']}: {result['final_score']}/100",
-              flush=True)
+        print(
+            f"[SCORED] {result['company']} — {result['title']}: {result['final_score']}/100",
+            flush=True,
+        )
         return result
 
     scored_count = 0
@@ -288,9 +350,13 @@ def score_batch(batch_file: str) -> int:
                 scored_count += 1
             except Exception as exc:
                 p = futures[fut]
-                print(f"[ERROR] {p.get('company', '?')} — {p.get('title', '?')}: {exc}",
-                      file=sys.stderr, flush=True)
+                print(
+                    f"[ERROR] {p.get('company', '?')} — {p.get('title', '?')}: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
-    print(f"[BATCH DONE] Scored {scored_count}/{len(postings)} postings from {batch_file}",
-          flush=True)
+    print(
+        f"[BATCH DONE] Scored {scored_count}/{len(postings)} postings from {batch_file}", flush=True
+    )
     return scored_count

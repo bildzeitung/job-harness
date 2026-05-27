@@ -25,7 +25,6 @@ def get_db_path() -> Path:
             job_data_root = data.get("env", {}).get("JOB_DATA_ROOT")
     if not job_data_root:
         raise RuntimeError(
-            "JOB_DATA_ROOT not set. "
-            "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
+            "JOB_DATA_ROOT not set. Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
         )
     return Path(job_data_root) / "jobs" / "postings.db"

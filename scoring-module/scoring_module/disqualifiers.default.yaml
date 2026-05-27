@@ -1,0 +1,60 @@
+# Hard disqualifiers for the job-harness pipeline.
+#
+# This is the DEFAULT template. The live, user-editable copy lives at
+# $JOB_DATA_ROOT/disqualifiers.yaml — edit that one to tune behavior.
+# If the live copy is missing, the scorer seeds it from this template.
+#
+# Two independent mechanisms:
+#   prefilter         — job-preparer marks matching postings 'skipped' BEFORE scoring.
+#   scoring_modifiers — the scorer LLM applies these negative modifiers DURING scoring.
+
+# Pre-filter: postings matching these are marked 'skipped' before scoring.
+prefilter:
+  # Case-insensitive substring match on title + description_summary.
+  description_phrases:
+    - "US work authorization"
+    - "authorized to work in the US"
+    - "US citizens only"
+    - "must be authorized to work in the United States"
+    - "must relocate"
+    - "relocation required"
+    - "on-site only"
+    - "no remote"
+  # Case-insensitive substring match on the title.
+  title_terms:
+    - " intern "
+    - "internship"
+  # Match in the title UNLESS the title also contains a seniority_exceptions term.
+  title_terms_unless_senior:
+    - "entry-level"
+    - "entry level"
+    - " junior "
+  seniority_exceptions:
+    - "senior"
+    - "staff"
+    - "principal"
+
+# Scoring modifiers: applied by the scorer LLM during scoring (sum if multiple match).
+scoring_modifiers:
+  - name: "Requires a named formal certification"
+    modifier: -40
+    examples:
+      - "AWS Certified"
+      - "Azure Administrator Certified"
+      - "GCP Associate"
+      - "PMP certified"
+      - "CISSP required"
+      - "CKA required"
+  - name: "Requires on-site or relocation"
+    modifier: -30
+    examples:
+      - "must relocate"
+      - "on-site required"
+      - "not remote"
+  - name: "Geography excludes Canada"
+    modifier: -25
+    examples:
+      - "US citizens only"
+      - "must be located in [US state]"
+      - "eligible to work in the United States"
+      - "US-based candidates only"

@@ -8,4 +8,3 @@ def ruff_format(session):
     session.install("ruff")
     session.run("ruff", "format")
     session.run("ruff", "check", "--fix")
-

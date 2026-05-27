@@ -46,13 +46,9 @@ Score 1–10 per dimension, then: `base_score = round(weighted_average * 10)`.
 
 ## Disqualifiers (apply before scoring)
 
-Check the full job description text for hard requirements the candidate cannot meet. If any disqualifier matches, apply the modifier and note it in `scoring_notes` — do **not** skip the posting entirely, so the low score is visible in reports.
+Disqualifiers are **user-configurable** and live in one place: `$JOB_DATA_ROOT/disqualifiers.yaml`. Read that file (`Read $JOB_DATA_ROOT/disqualifiers.yaml`) and use its `scoring_modifiers` list — each entry has a `name`, a (negative) `modifier`, and `examples`. Do not hard-code disqualifiers here; the file is the source of truth so the user can tune them.
 
-| Disqualifier | Modifier | Examples |
-|---|---|---|
-| Requires a named formal certification | −40 | "AWS Certified", "Azure Administrator Certified", "GCP Associate", "PMP certified", "CISSP required", "CKA required" |
-| Requires relocation or on-site | −30 | "must relocate", "on-site required", "not remote" |
-| Geography excludes Canada | −25 | Explicit: "US citizens only", "must be located in [US state]", "no international". Implicit: work authorization language mentioning only US ("must be authorized to work in the US", "eligible to work in the United States"), location listed as a US city/state with no mention of remote or Canada, or "US-based candidates only" |
+Check the full job description text for the conditions in `scoring_modifiers`. If any matches, apply its modifier and note it in `scoring_notes` — do **not** skip the posting entirely, so the low score is visible in reports. Sum the modifiers if multiple match.
 
 The candidate holds **no formal cloud or vendor certifications**. Years of hands-on AWS/Azure/OCI experience does not satisfy a "must be certified" requirement.
 

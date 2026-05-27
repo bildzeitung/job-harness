@@ -14,48 +14,64 @@ _ANCHOR_JOB_RE = re.compile(
 )
 
 # Fallback: bare URL not inside an <a> tag
-_BARE_JOB_RE = re.compile(
-    r'https://www\.linkedin\.com/(?:comm/)?jobs/view/(\d+)'
-)
+_BARE_JOB_RE = re.compile(r"https://www\.linkedin\.com/(?:comm/)?jobs/view/(\d+)")
 
 # First block-level element right after an anchor — contains "Company · Location"
 _FIRST_BLOCK_RE = re.compile(
-    r'<(?:span|p|td|div|li)\b[^>]*>(.*?)</(?:span|p|td|div|li)>',
+    r"<(?:span|p|td|div|li)\b[^>]*>(.*?)</(?:span|p|td|div|li)>",
     re.IGNORECASE | re.DOTALL,
 )
 
 # Company after "at" keyword: "at BigCo"
-_AT_COMPANY_RE = re.compile(
-    r"\bat\s+([A-Z][A-Za-z0-9 &,.'!-]{2,60}?)(?:\s*[·•\n]|[,.]|$)"
-)
+_AT_COMPANY_RE = re.compile(r"\bat\s+([A-Z][A-Za-z0-9 &,.'!-]{2,60}?)(?:\s*[·•\n]|[,.]|$)")
 
 # Window-based title: seniority keyword → separator
 _WINDOW_TITLE_RE = re.compile(
-    r'\b((?:Principal|Staff|Distinguished|Senior|Sr\.|Lead|Architect'
-    r'|Director|VP|Vice\s+President|Head)[^·|<\n]{5,80}?)(?:\s*[·|]|\s+at\s)',
+    r"\b((?:Principal|Staff|Distinguished|Senior|Sr\.|Lead|Architect"
+    r"|Director|VP|Vice\s+President|Head)[^·|<\n]{5,80}?)(?:\s*[·|]|\s+at\s)",
     re.IGNORECASE,
 )
 
 # Anchor texts that are navigation links, not job titles
-_SKIP_TEXTS = frozenset({
-    "view job", "view", "apply", "apply now", "see more", "learn more",
-    "click here", "more jobs like this", "unsubscribe", "manage alerts",
-    "settings", "privacy policy", "help center",
-})
+_SKIP_TEXTS = frozenset(
+    {
+        "view job",
+        "view",
+        "apply",
+        "apply now",
+        "see more",
+        "learn more",
+        "click here",
+        "more jobs like this",
+        "unsubscribe",
+        "manage alerts",
+        "settings",
+        "privacy policy",
+        "help center",
+    }
+)
 
 DEFAULT_SENIORITY_KEYWORDS: list[str] = [
-    "principal", "staff", "distinguished",
-    "senior", "sr.", "sr ",
-    "lead", "architect",
-    "director", "vp", "vice president",
-    "head of", "head,",
+    "principal",
+    "staff",
+    "distinguished",
+    "senior",
+    "sr.",
+    "sr ",
+    "lead",
+    "architect",
+    "director",
+    "vp",
+    "vice president",
+    "head of",
+    "head,",
 ]
 
 
 def _strip_tags(text: str) -> str:
     """Remove HTML tags and normalise whitespace."""
-    text = re.sub(r'<[^>]+>', ' ', text)
-    return re.sub(r'\s+', ' ', html_lib.unescape(text)).strip()
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", html_lib.unescape(text)).strip()
 
 
 def _find_company(context: str) -> str:
@@ -98,7 +114,7 @@ def _context_after_anchor(html_body: str, anchor_end: int) -> str:
     Limiting to one block element prevents context from bleeding into the
     next job card when multiple cards appear in the same email.
     """
-    after_raw = html_body[anchor_end: anchor_end + 600]
+    after_raw = html_body[anchor_end : anchor_end + 600]
     block_m = _FIRST_BLOCK_RE.search(after_raw)
     if block_m:
         return _strip_tags(block_m.group(1))
@@ -142,17 +158,19 @@ def parse(html_body: str) -> list[dict]:
 
         # Use a wide window of surrounding text
         start = max(0, m.start() - 800)
-        window = _strip_tags(html_body[start: m.end() + 200])
+        window = _strip_tags(html_body[start : m.end() + 200])
 
         title_m = _WINDOW_TITLE_RE.search(window)
         title = title_m.group(1).strip() if title_m else "Unknown Title"
         company = _find_company(window)
 
-        jobs.append({
-            "title": title,
-            "company": company,
-            "url": f"https://www.linkedin.com/jobs/view/{job_id}",
-        })
+        jobs.append(
+            {
+                "title": title,
+                "company": company,
+                "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+            }
+        )
 
     return jobs
 

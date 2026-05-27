@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from harness_db.models import Company, Posting, make_engine  # noqa: F401 — re-exported for callers
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from harness_db.models import Company, Posting, make_engine  # noqa: F401 — re-exported for callers
 
 __all__ = ["Company", "Posting", "make_engine", "get_postings", "get_companies", "update_status"]
 

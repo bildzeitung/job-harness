@@ -12,33 +12,38 @@ from scoring_module.scorer import (
     _age_modifier,
     _competition_modifier,
     _fetch_jd,
+    _load_disqualifiers,
+    _render_disqualifiers,
     _sanitize,
     _score_one,
     score_batch,
 )
 
-
 # ---------------------------------------------------------------------------
 # _age_modifier — boundary tests for every branch
 # ---------------------------------------------------------------------------
+
 
 def _days_ago(n: int) -> str:
     return (date.today() - timedelta(days=n)).isoformat()
 
 
-@pytest.mark.parametrize("days,expected", [
-    (0,  8),   # today
-    (1,  8),
-    (3,  8),   # boundary: ≤3 → +8
-    (4,  4),   # boundary: 4 → +4
-    (7,  4),   # boundary: ≤7 → +4
-    (8,  0),   # boundary: 8 → 0
-    (14, 0),   # boundary: ≤14 → 0
-    (15, -5),  # boundary: 15 → -5
-    (30, -5),  # boundary: ≤30 → -5
-    (31, -12), # boundary: 31 → -12
-    (90, -12),
-])
+@pytest.mark.parametrize(
+    "days,expected",
+    [
+        (0, 8),  # today
+        (1, 8),
+        (3, 8),  # boundary: ≤3 → +8
+        (4, 4),  # boundary: 4 → +4
+        (7, 4),  # boundary: ≤7 → +4
+        (8, 0),  # boundary: 8 → 0
+        (14, 0),  # boundary: ≤14 → 0
+        (15, -5),  # boundary: 15 → -5
+        (30, -5),  # boundary: ≤30 → -5
+        (31, -12),  # boundary: 31 → -12
+        (90, -12),
+    ],
+)
 def test_age_modifier_boundaries(days, expected):
     assert _age_modifier(_days_ago(days)) == expected
 
@@ -59,17 +64,21 @@ def test_age_modifier_invalid_date():
 # _competition_modifier — boundary tests for every branch
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("count,expected", [
-    (0,   5),   # < 25 → +5
-    (1,   5),
-    (24,  5),   # boundary: 24 → +5
-    (25,  0),   # boundary: 25 → 0
-    (100, 0),   # boundary: ≤100 → 0
-    (101, -5),  # boundary: 101 → -5
-    (200, -5),  # boundary: ≤200 → -5
-    (201, -10), # boundary: 201 → -10
-    (500, -10),
-])
+
+@pytest.mark.parametrize(
+    "count,expected",
+    [
+        (0, 5),  # < 25 → +5
+        (1, 5),
+        (24, 5),  # boundary: 24 → +5
+        (25, 0),  # boundary: 25 → 0
+        (100, 0),  # boundary: ≤100 → 0
+        (101, -5),  # boundary: 101 → -5
+        (200, -5),  # boundary: ≤200 → -5
+        (201, -10),  # boundary: 201 → -10
+        (500, -10),
+    ],
+)
 def test_competition_modifier_boundaries(count, expected):
     assert _competition_modifier(count) == expected
 
@@ -82,21 +91,67 @@ def test_competition_modifier_none():
 # _sanitize
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("input_,expected", [
-    ("Acme Corp",          "acme-corp"),
-    ("A&B Solutions, Inc.", "ab-solutions-inc"),
-    ("  Company  ",        "company"),
-    ("Two  Words",         "two-words"),
-    ("Already-clean",      "already-clean"),
-    ("123 Numbers",        "123-numbers"),
-])
+
+@pytest.mark.parametrize(
+    "input_,expected",
+    [
+        ("Acme Corp", "acme-corp"),
+        ("A&B Solutions, Inc.", "ab-solutions-inc"),
+        ("  Company  ", "company"),
+        ("Two  Words", "two-words"),
+        ("Already-clean", "already-clean"),
+        ("123 Numbers", "123-numbers"),
+    ],
+)
 def test_sanitize(input_, expected):
     assert _sanitize(input_) == expected
 
 
 # ---------------------------------------------------------------------------
+# disqualifiers config
+# ---------------------------------------------------------------------------
+
+
+def test_render_disqualifiers_includes_name_modifier_examples():
+    config = {
+        "scoring_modifiers": [
+            {"name": "Requires cert", "modifier": -40, "examples": ["AWS Certified", "CISSP"]},
+            {"name": "Relocation", "modifier": -30, "examples": []},
+        ]
+    }
+    text = _render_disqualifiers(config)
+    assert "Requires cert (AWS Certified, CISSP): -40" in text
+    assert "Relocation: -30" in text
+    assert "No disqualifiers: 0" in text
+
+
+def test_render_disqualifiers_empty_config():
+    assert _render_disqualifiers({}) == "- No disqualifiers: 0"
+
+
+def test_load_disqualifiers_seeds_from_default(tmp_path):
+    # No live file present → it is seeded from the bundled default and parsed.
+    with patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
+        config = _load_disqualifiers()
+    live = tmp_path / "disqualifiers.yaml"
+    assert live.exists()  # seeded
+    assert "prefilter" in config
+    assert "scoring_modifiers" in config
+    assert all("modifier" in d for d in config["scoring_modifiers"])
+
+
+def test_load_disqualifiers_reads_existing_without_overwrite(tmp_path):
+    live = tmp_path / "disqualifiers.yaml"
+    live.write_text("scoring_modifiers:\n  - name: Custom\n    modifier: -99\n    examples: []\n")
+    with patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
+        config = _load_disqualifiers()
+    assert config["scoring_modifiers"][0]["modifier"] == -99  # user copy preserved
+
+
+# ---------------------------------------------------------------------------
 # _fetch_jd
 # ---------------------------------------------------------------------------
+
 
 def test_fetch_jd_strips_html_and_truncates():
     html = "<html><body>" + ("<p>word </p>" * 2000) + "</body></html>"
@@ -123,13 +178,22 @@ def test_fetch_jd_returns_none_on_exception():
 # _score_one helpers
 # ---------------------------------------------------------------------------
 
-def _api_response(base_score=78, disqualifier_modifier=0, notes="Good fit",
-                  dimension_scores=None) -> MagicMock:
+
+def _api_response(
+    base_score=78, disqualifier_modifier=0, notes="Good fit", dimension_scores=None
+) -> MagicMock:
     """Build a mock Anthropic client that returns a given score response."""
     if dimension_scores is None:
-        dimension_scores = {k: 8 for k in
-                            ("technical_fit", "seniority_match", "domain_fit",
-                             "remote_canada_confirmed", "role_clarity")}
+        dimension_scores = {
+            k: 8
+            for k in (
+                "technical_fit",
+                "seniority_match",
+                "domain_fit",
+                "remote_canada_confirmed",
+                "role_clarity",
+            )
+        }
     payload = {
         "dimension_scores": dimension_scores,
         "base_score": base_score,
@@ -164,6 +228,7 @@ def _posting(jd_text="x" * 600, post_date=None, applicant_count=None, **kwargs):
 # _score_one — scoring math
 # ---------------------------------------------------------------------------
 
+
 def test_score_one_modifier_math():
     # base=80, today (+8 age), <25 applicants (+5), no disqualifier → modifier=13
     client = _api_response(base_score=80)
@@ -190,16 +255,20 @@ def test_score_one_clamps_to_100():
 def test_score_one_clamps_to_1():
     # -65 disqualifier + -12 old post + -10 competitive = -87 net
     client = _api_response(base_score=20, disqualifier_modifier=-65)
-    result = _score_one(client, _posting(
-        post_date=_days_ago(60),
-        applicant_count=300,
-    ))
+    result = _score_one(
+        client,
+        _posting(
+            post_date=_days_ago(60),
+            applicant_count=300,
+        ),
+    )
     assert result["final_score"] == 1
 
 
 # ---------------------------------------------------------------------------
 # _score_one — JD fetch behaviour
 # ---------------------------------------------------------------------------
+
 
 def test_score_one_skips_fetch_when_jd_present():
     client = _api_response()
@@ -234,6 +303,7 @@ def test_score_one_fetch_failure_uses_summary_and_penalises():
 # _score_one — API response edge cases
 # ---------------------------------------------------------------------------
 
+
 def test_score_one_invalid_json_uses_default():
     block = MagicMock()
     block.text = "not json {{{"
@@ -258,6 +328,7 @@ def test_score_one_passes_cache_control_on_system_prompt():
 # ---------------------------------------------------------------------------
 # score_batch — end-to-end with tmp DB and tmp files
 # ---------------------------------------------------------------------------
+
 
 def _make_db(path: Path) -> None:
     conn = sqlite3.connect(str(path))
@@ -308,9 +379,11 @@ def test_score_batch_scores_and_updates_db(tmp_path):
 
     client = _api_response(base_score=78)
 
-    with patch("scoring_module.scorer.anthropic.Anthropic", return_value=client), \
-         patch("scoring_module.scorer.DB_PATH", str(db_path)), \
-         patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+    ):
         count = score_batch(str(batch_file))
 
     assert count == 1
@@ -330,16 +403,18 @@ def test_score_batch_scores_and_updates_db(tmp_path):
 
 
 def test_score_batch_writes_report_file(tmp_path):
-    postings = [{
-        "url": "https://example.com/job/2",
-        "title": "Staff Engineer",
-        "company": "Beta Inc",
-        "platform": "indeed",
-        "post_date": None,
-        "applicant_count": None,
-        "description_summary": "",
-        "job_description_text": "x" * 600,
-    }]
+    postings = [
+        {
+            "url": "https://example.com/job/2",
+            "title": "Staff Engineer",
+            "company": "Beta Inc",
+            "platform": "indeed",
+            "post_date": None,
+            "applicant_count": None,
+            "description_summary": "",
+            "job_description_text": "x" * 600,
+        }
+    ]
     batch_file = tmp_path / "batch.json"
     batch_file.write_text(json.dumps(postings))
 
@@ -349,9 +424,11 @@ def test_score_batch_writes_report_file(tmp_path):
 
     client = _api_response(base_score=65)
 
-    with patch("scoring_module.scorer.anthropic.Anthropic", return_value=client), \
-         patch("scoring_module.scorer.DB_PATH", str(db_path)), \
-         patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+    ):
         score_batch(str(batch_file))
 
     reports_dir = tmp_path / "jobs" / "reports"
@@ -365,9 +442,16 @@ def test_score_batch_writes_report_file(tmp_path):
 
 def test_score_batch_returns_count_on_partial_failure(tmp_path):
     postings = [
-        {"url": f"https://example.com/job/{i}", "title": "Engineer", "company": f"Co{i}",
-         "platform": "linkedin", "post_date": None, "applicant_count": None,
-         "description_summary": "", "job_description_text": "x" * 600}
+        {
+            "url": f"https://example.com/job/{i}",
+            "title": "Engineer",
+            "company": f"Co{i}",
+            "platform": "linkedin",
+            "post_date": None,
+            "applicant_count": None,
+            "description_summary": "",
+            "job_description_text": "x" * 600,
+        }
         for i in range(3)
     ]
     batch_file = tmp_path / "batch.json"
@@ -386,12 +470,23 @@ def test_score_batch_returns_count_on_partial_failure(tmp_path):
         if call_count == 2:
             raise RuntimeError("API error")
         block = MagicMock()
-        block.text = json.dumps({
-            "dimension_scores": {k: 7 for k in
-                                  ("technical_fit", "seniority_match", "domain_fit",
-                                   "remote_canada_confirmed", "role_clarity")},
-            "base_score": 60, "disqualifier_modifier": 0, "scoring_notes": "ok",
-        })
+        block.text = json.dumps(
+            {
+                "dimension_scores": {
+                    k: 7
+                    for k in (
+                        "technical_fit",
+                        "seniority_match",
+                        "domain_fit",
+                        "remote_canada_confirmed",
+                        "role_clarity",
+                    )
+                },
+                "base_score": 60,
+                "disqualifier_modifier": 0,
+                "scoring_notes": "ok",
+            }
+        )
         msg = MagicMock()
         msg.content = [block]
         return msg
@@ -399,10 +494,12 @@ def test_score_batch_returns_count_on_partial_failure(tmp_path):
     mock_client = MagicMock()
     mock_client.messages.create.side_effect = flaky_create
 
-    with patch("scoring_module.scorer.anthropic.Anthropic", return_value=mock_client), \
-         patch("scoring_module.scorer.DB_PATH", str(db_path)), \
-         patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)), \
-         patch("scoring_module.scorer.MAX_RETRIES", 0):
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=mock_client),
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+        patch("scoring_module.scorer.MAX_RETRIES", 0),
+    ):
         count = score_batch(str(batch_file))
 
     assert count == 2  # 1 failed, 2 succeeded
