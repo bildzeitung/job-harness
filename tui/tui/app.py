@@ -266,14 +266,13 @@ class JobViewerApp(App):
         import select as _select
 
         lines: list[str] = []
+        self.call_from_thread(output.update, Text("Launching…"))
 
         def _flush_line(raw: str) -> None:
             text = _ANSI_ESCAPE.sub("", raw).rstrip()
             if text:
                 lines.append(text)
-                # output is captured on the main thread before the worker starts —
-                # safe to use here without calling query_one from a thread.
-                self.call_from_thread(output.update, "\n".join(lines))
+                self.call_from_thread(output.update, Text("\n".join(lines)))
 
         master_fd, slave_fd = pty.openpty()
         try:
@@ -288,7 +287,7 @@ class JobViewerApp(App):
         except Exception as exc:
             os.close(slave_fd)
             os.close(master_fd)
-            self.call_from_thread(output.update, f"Error launching claude: {exc}")
+            self.call_from_thread(output.update, Text(f"Error launching claude: {exc}"))
             self.call_from_thread(self.notify, f"Launch failed: {exc}", severity="error")
             return
 
@@ -316,7 +315,7 @@ class JobViewerApp(App):
                     break
         except Exception as exc:
             self.call_from_thread(
-                output.update, "\n".join(lines) + f"\n\nRead error: {exc}"
+                output.update, Text("\n".join(lines) + f"\n\nRead error: {exc}")
             )
         finally:
             if buf.strip():
