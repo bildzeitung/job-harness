@@ -11,7 +11,7 @@ You are the orchestrator agent for this job search harness. You handle the **Job
 The SQLite DB is the source of truth for all postings. You do not need a search results file — you query the DB directly.
 
 1. Query the DB for postings that need scoring (status `new`, or `scored` but stale)
-2. Pre-filter obvious mismatches (hard disqualifiers + skill mismatch) to reduce scoring cost
+2. Pre-filter hard disqualifiers (US-only, on-site, intern, entry-level) and mark them `skipped`
 3. Score remaining postings in parallel batches via the `job-scorer` agent (skip if none need scoring)
 4. Query the DB for all freshly scored postings, ranked by score
 5. Present the top 5 (minimum score: 75) to the user; ask which jobs to prepare
@@ -37,9 +37,9 @@ Call this the **needs-scoring list**. If this list is empty, skip Steps 2–3 an
 
 ## Step 2: Pre-filter Before Scoring
 
-Before writing batch files, filter the needs-scoring list to eliminate obvious mismatches. This reduces scoring cost without losing any good candidates.
+Before writing batch files, filter the needs-scoring list to eliminate hard disqualifiers. This reduces scoring cost without losing any good candidates.
 
-Examine each posting's `title` and `description_summary`. Two categories of exclusion:
+Examine each posting's `title` and `description_summary`:
 
 **Hard disqualifiers** — mark `status = 'skipped'` in the DB and remove from the list permanently:
 - Contains (case-insensitive): "US work authorization", "authorized to work in the US", "US citizens only", "must be authorized to work in the United States", "must relocate", "relocation required", "on-site only", "no remote"
@@ -51,10 +51,9 @@ Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLit
 UPDATE postings SET status = 'skipped' WHERE url = '{url}'
 ```
 
-**Soft skill filter** — exclude from this scoring run but do NOT update DB status (they remain `new` for future re-evaluation):
-- `description_summary` is ≥ 50 characters AND contains none of: python, java, golang, " go ", "c#", ".net", cloud, aws, azure, gcp, oci, kubernetes, k8s, terraform, infrastructure, platform, distributed, healthcare, fhir, hl7, "ai/ml", "machine learning", data engineering
+All remaining postings (not hard-disqualified) are sent to scoring — including those with unusual tech stacks. The scorer evaluates fit accurately and assigns a low score where appropriate.
 
-Print: `[PRE-FILTER] {kept} kept for scoring | {hard} hard-disqualified (DB → skipped) | {soft} soft-filtered (skipped this run)`
+Print: `[PRE-FILTER] {kept} kept for scoring | {hard} hard-disqualified (DB → skipped)`
 
 If no postings remain after filtering, skip Step 3 and go directly to Step 4.
 

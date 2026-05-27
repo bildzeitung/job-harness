@@ -15,6 +15,13 @@ job-tui = "tui.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["tui"]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "nox>=2024.3.2"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+lint.extend-select = ["I"]

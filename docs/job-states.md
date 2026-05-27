@@ -10,7 +10,6 @@ stateDiagram-v2
 
     new --> skipped : pre-filter: hard disqualifier<br>(US-only · on-site · intern · relocation)
     new --> scored : scoring_module scores posting<br>(base_score + modifiers applied)
-    new --> new : soft skill mismatch<br>(excluded this run, re-evaluated next)
 
     scored --> scored : stale — re-scored<br>(scored_date > 7 days ago)
     scored --> selected : job-preparer: top 5<br>where final_score ≥ 75
@@ -37,6 +36,5 @@ stateDiagram-v2
 ### Notes
 
 - A posting that scores below 75 is **not** marked `skipped` — it remains `scored` and is simply not selected. It stays eligible if future runs have fewer high-scorers.
-- A soft skill mismatch (e.g. a posting for a Java role when the candidate's profile is Go/Python) is **excluded from the current scoring batch but not marked `skipped`**. The posting stays `new` and is re-evaluated on the next run.
 - A `scored` posting older than 7 days is re-queued for scoring on the next pipeline run. It stays in `scored` state but gets fresh scores before re-evaluation.
 - `prepared` and `applied` postings are both excluded from the ranked candidate list in future pipeline runs.

@@ -31,10 +31,14 @@ JD_TRUNCATE_WARN_THRESHOLD = 7900
 
 
 def _load_system_prompt() -> str:
-    module_dir = Path(__file__).parent
-    with open(module_dir / "candidate_profile.json") as f:
+    if not JOB_DATA_ROOT:
+        raise RuntimeError(
+            "JOB_DATA_ROOT not set — needed to read candidate_summary.json. "
+            "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
+        )
+    with open(Path(JOB_DATA_ROOT) / "candidate_summary.json") as f:
         profile = json.load(f)
-    template = (module_dir / "system_prompt.txt").read_text()
+    template = (Path(__file__).parent / "system_prompt.txt").read_text()
     return template.replace("{{CANDIDATE_PROFILE}}", profile["profile_text"])
 
 

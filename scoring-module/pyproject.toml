@@ -15,7 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "nox>=2024.3.2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["scoring_module"]
+
+[tool.ruff]
+line-length = 100
+lint.extend-select = ["I"]

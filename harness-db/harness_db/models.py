@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Integer, String, Text, create_engine
+from sqlalchemy import Boolean, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -45,6 +45,16 @@ class Posting(Base):
         if not self.first_seen:
             return "—"
         return self.first_seen[:10].replace("-", "/")
+
+
+class Company(Base):
+    __tablename__ = "companies"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    remote_confirmed: Mapped[bool | None] = mapped_column(Boolean)
+    canada_confirmed: Mapped[bool | None] = mapped_column(Boolean)
+    last_seen_date: Mapped[str | None] = mapped_column(String)
 
 
 def make_engine(db_path: Path):

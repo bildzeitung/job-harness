@@ -8,7 +8,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
 from textual import work
 
 STATE_STYLES: dict[str, str] = {
@@ -23,8 +23,10 @@ STATE_STYLES: dict[str, str] = {
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
 _COL_PADDING = 6  # borders, scrollbar, gutters
-_OUTPUT_PANEL_HEIGHT = 20
 _ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+_SORT_MODES = ["state", "date", "title"]
+_SORT_INDICATOR = "▼"
 
 
 class JobViewerApp(App):
@@ -32,8 +34,11 @@ class JobViewerApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
+        Binding("s", "cycle_sort", "Sort"),
+        Binding("t", "switch_tab", "Switch Tab"),
         Binding("p", "prepare_job", "Prepare"),
         Binding("a", "mark_applied", "Applied"),
+        Binding("S", "score_new", "Score New"),
         Binding("o", "toggle_output", "Output", show=False),
         Binding("j", "scroll_details_down", "Scroll ↓", show=False),
         Binding("k", "scroll_details_up", "Scroll ↑", show=False),
@@ -44,35 +49,56 @@ class JobViewerApp(App):
         self.db_path = db_path
         self._engine = None
         self._postings: list = []
+        self._companies: list = []
         self._details_visible = False
+        self._sort_by = "state"
         self._job_col_key = None
+        self._date_col_key = None
         self._state_col_key = None
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical(id="main"):
-            yield DataTable(id="jobs-table", cursor_type="row", zebra_stripes=True)
-            with ScrollableContainer(id="details-panel"):
-                yield Static(id="details-content")
-            with ScrollableContainer(id="output-panel"):
-                yield Static(id="output-content")
+        with TabbedContent(id="tabs", initial="jobs"):
+            with TabPane("Jobs", id="jobs"):
+                with Vertical(id="jobs-pane"):
+                    yield DataTable(id="jobs-table", cursor_type="row", zebra_stripes=True)
+                    with ScrollableContainer(id="details-panel"):
+                        yield Static(id="details-content")
+                    with ScrollableContainer(id="output-panel"):
+                        yield Static(id="output-content")
+            with TabPane("Companies", id="companies"):
+                yield DataTable(id="companies-table", cursor_type="row", zebra_stripes=True)
         yield Footer()
 
     def on_mount(self) -> None:
-        from tui.db import get_postings, make_engine
+        from tui.db import get_companies, get_postings, make_engine
 
         try:
             self._engine = make_engine(self.db_path)
-            self._postings = get_postings(self._engine)
+            self._postings = get_postings(self._engine, self._sort_by)
+            self._companies = get_companies(self._engine)
         except Exception as e:
             self.exit(f"Error reading database: {e}")
             return
 
+        self._init_jobs_table()
+        self._init_companies_table()
+
+        self.query_one("#details-panel").display = False
+        self.query_one("#output-panel").display = False
+
+    def _col_label(self, label: str, sort_key: str) -> str:
+        if self._sort_by == sort_key:
+            return f"{label} {_SORT_INDICATOR}"
+        return label
+
+    def _init_jobs_table(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
+        table.clear(columns=True)
         job_width = max(20, self.size.width - _DATE_WIDTH - _STATE_WIDTH - _COL_PADDING)
-        self._job_col_key = table.add_column("Job", width=job_width)
-        table.add_column("Date", width=_DATE_WIDTH)
-        self._state_col_key = table.add_column("State", width=_STATE_WIDTH)
+        self._job_col_key = table.add_column(self._col_label("Job", "title"), width=job_width)
+        self._date_col_key = table.add_column(self._col_label("Date", "date"), width=_DATE_WIDTH)
+        self._state_col_key = table.add_column(self._col_label("State", "state"), width=_STATE_WIDTH)
 
         for posting in self._postings:
             status = posting.status or "new"
@@ -84,32 +110,66 @@ class JobViewerApp(App):
             )
 
         self.title = f"Job Viewer — {len(self._postings)} postings"
-        self.query_one("#details-panel").display = False
-        self.query_one("#output-panel").display = False
+
+    def _init_companies_table(self) -> None:
+        table = self.query_one("#companies-table", DataTable)
+        table.clear(columns=True)
+        table.add_column("Company", width=30)
+        table.add_column("Remote", width=8)
+        table.add_column("Canada", width=8)
+        table.add_column("Last Seen", width=12)
+        table.add_column("Notes")
+
+        for company in self._companies:
+            remote = "✓" if company.remote_confirmed else ("✗" if company.remote_confirmed is False else "—")
+            canada = "✓" if company.canada_confirmed else ("✗" if company.canada_confirmed is False else "—")
+            last_seen = (company.last_seen_date or "—")[:10]
+            table.add_row(
+                company.name or "—",
+                remote,
+                canada,
+                last_seen,
+                company.notes or "—",
+                key=company.name,
+            )
+
+        self.sub_title = f"{len(self._companies)} companies"
 
     def action_refresh(self) -> None:
-        from tui.db import get_postings
+        from tui.db import get_companies, get_postings
 
         try:
-            self._postings = get_postings(self._engine)
+            self._postings = get_postings(self._engine, self._sort_by)
+            self._companies = get_companies(self._engine)
         except Exception as e:
             self.notify(f"Refresh failed: {e}", severity="error")
             return
 
-        table = self.query_one("#jobs-table", DataTable)
-        table.clear()
-        for posting in self._postings:
-            status = posting.status or "new"
-            table.add_row(
-                posting.display_name,
-                posting.display_date,
-                Text(status, style=STATE_STYLES.get(status, "white")),
-                key=posting.url,
-            )
-
-        self.title = f"Job Viewer — {len(self._postings)} postings"
+        self._init_jobs_table()
+        self._init_companies_table()
         self.query_one("#details-panel").display = False
         self._details_visible = False
+
+    def action_cycle_sort(self) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        if tabs.active != "jobs":
+            return
+        idx = (_SORT_MODES.index(self._sort_by) + 1) % len(_SORT_MODES)
+        self._sort_by = _SORT_MODES[idx]
+        from tui.db import get_postings
+        try:
+            self._postings = get_postings(self._engine, self._sort_by)
+        except Exception as e:
+            self.notify(f"Sort failed: {e}", severity="error")
+            return
+        self._init_jobs_table()
+        self.query_one("#details-panel").display = False
+        self._details_visible = False
+        self.notify(f"Sorted by: {self._sort_by}", timeout=2)
+
+    def action_switch_tab(self) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        tabs.active = "companies" if tabs.active == "jobs" else "jobs"
 
     def on_resize(self) -> None:
         if self._job_col_key is None:
@@ -120,6 +180,8 @@ class JobViewerApp(App):
         table.refresh()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.control.id != "jobs-table":
+            return
         panel = self.query_one("#details-panel")
         if self._details_visible:
             panel.display = False
@@ -128,6 +190,8 @@ class JobViewerApp(App):
             self._show_details(event.cursor_row)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.control.id != "jobs-table":
+            return
         if self._details_visible:
             self._show_details(event.cursor_row)
 
@@ -140,6 +204,9 @@ class JobViewerApp(App):
         self._details_visible = True
 
     def action_prepare_job(self) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        if tabs.active != "jobs":
+            return
         table = self.query_one("#jobs-table", DataTable)
         row = table.cursor_row
         if row < 0 or row >= len(self._postings):
@@ -155,14 +222,24 @@ class JobViewerApp(App):
             f"pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
         )
 
-        output_widget = self.query_one("#output-content", Static)
-        output_widget.update("")
+        self.query_one("#output-content", Static).update("")
         self.query_one("#output-panel").display = True
         self.notify(f"Launching prepare for {posting.company or posting.url}…")
-        self._run_prepare(posting.url, prompt)
+        self._run_claude(prompt)
+
+    def action_score_new(self) -> None:
+        prompt = (
+            "Use the job-preparer agent to score all postings currently in 'new' state. "
+            "Run Steps 1-3 only (query new postings, pre-filter hard disqualifiers, score remaining). "
+            "Do not present ranked results or run the preparation pipeline."
+        )
+        self.query_one("#output-content", Static).update("")
+        self.query_one("#output-panel").display = True
+        self.notify("Launching scoring pipeline for 'new' jobs…")
+        self._run_claude(prompt)
 
     @work(thread=True, exclusive=True)
-    def _run_prepare(self, url: str, prompt: str) -> None:
+    def _run_claude(self, prompt: str) -> None:
         lines: list[str] = []
 
         def _update(line: str) -> None:
@@ -184,10 +261,10 @@ class JobViewerApp(App):
                 _update(line)
             proc.wait()
             if proc.returncode == 0:
-                self.call_from_thread(self.notify, "Prepare complete!", severity="information")
+                self.call_from_thread(self.notify, "Done!", severity="information")
             else:
                 self.call_from_thread(
-                    self.notify, f"Prepare failed (exit {proc.returncode})", severity="error"
+                    self.notify, f"Failed (exit {proc.returncode})", severity="error"
                 )
         except Exception as exc:
             self.call_from_thread(
@@ -202,6 +279,9 @@ class JobViewerApp(App):
     def action_mark_applied(self) -> None:
         from tui.db import update_status
 
+        tabs = self.query_one("#tabs", TabbedContent)
+        if tabs.active != "jobs":
+            return
         table = self.query_one("#jobs-table", DataTable)
         row = table.cursor_row
         if row < 0 or row >= len(self._postings):

@@ -2,12 +2,25 @@ Screen {
     layout: vertical;
 }
 
-#main {
+TabbedContent {
+    height: 1fr;
+}
+
+TabPane {
+    height: 1fr;
+    padding: 0;
+}
+
+#jobs-pane {
     height: 1fr;
     layout: vertical;
 }
 
 #jobs-table {
+    height: 1fr;
+}
+
+#companies-table {
     height: 1fr;
 }
 
