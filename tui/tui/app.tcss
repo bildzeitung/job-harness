@@ -20,8 +20,29 @@ TabPane {
     height: 1fr;
 }
 
+#company-panel {
+    height: 1fr;
+}
+
+#companies-pane {
+    height: 1fr;
+    layout: vertical;
+}
+
 #companies-table {
     height: 1fr;
+}
+
+#company-details-panel {
+    height: 14;
+    border-top: solid $primary;
+    background: $surface;
+    padding: 0 1;
+}
+
+#company-details-content {
+    color: $text;
+    padding: 0;
 }
 
 #details-panel {
