@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, create_engine
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, create_engine, Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -71,5 +71,5 @@ class CompanyPosting(Base):
     __table_args__ = (Index("ix_company_postings_company_name", "company_name"),)
 
 
-def make_engine(db_path: Path):
+def make_engine(db_path: Path) -> Engine :
     return create_engine(f"sqlite:///{db_path}", echo=False)
