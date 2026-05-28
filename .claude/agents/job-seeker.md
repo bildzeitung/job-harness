@@ -135,12 +135,13 @@ MCP-dependent sources — spawn only if in `enabled_sources` **and** the probe s
 - `subagent_type: job-seeker-indeed` — if `indeed` in `enabled_sources` and Indeed probe succeeded
 - `subagent_type: job-seeker-ziprecruiter` — if `ziprecruiter` in `enabled_sources` and ZipRecruiter probe succeeded
 
-Each agent writes its own temp file:
+Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes two — one per ATS):
 - `job-data/jobs/linkedin-{YYYY-MM-DD}.json` (if spawned)
 - `job-data/jobs/indeed-{YYYY-MM-DD}.json`
 - `job-data/jobs/adzuna-{YYYY-MM-DD}.json`
 - `job-data/jobs/ziprecruiter-{YYYY-MM-DD}.json`
 - `job-data/jobs/greenhouse-{YYYY-MM-DD}.json`
+- `job-data/jobs/lever-{YYYY-MM-DD}.json` (also from the greenhouse agent)
 - `job-data/jobs/research-{YYYY-MM-DD}.json`
 
 Wait for all spawned agents to complete before proceeding.

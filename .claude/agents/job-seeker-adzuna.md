@@ -24,19 +24,21 @@ Every job you surface MUST satisfy ALL of the following:
 
 ## Running the Search
 
-The `adzuna_search` module is installed in the project venv and handles all API calls, deduplication, and filtering. Run it directly:
+The `api_search` module is installed in the project venv and handles **everything** — API calls, filtering, deduplication, field shaping, and writing the output file. Do **not** write your own Python script; run the module:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 . "$PROJECT_ROOT/venv/bin/activate"
-python -m adzuna_search
+python -m api_search adzuna
 ```
 
-The module reads `ADZUNA_APP_ID` and `ADZUNA_API_KEY` from the environment, runs the default query set against the Adzuna Canada API, applies remote/seniority/Canada-eligibility filters, deduplicates by URL, and prints a JSON array of postings to stdout.
+The module reads `ADZUNA_APP_ID` / `ADZUNA_API_KEY` and the candidate summary, queries the Adzuna Canada API (one query per target title), applies the remote/seniority/Canada-eligibility filters, deduplicates by URL, and writes the complete, consolidator-ready file to `$JOB_DATA_ROOT/jobs/adzuna-{YYYY-MM-DD}.json` — including `platform`, `applicant_count`, `employment_type`, `location_note`, `description_summary`, and `job_description_text`. It prints `[API-SEARCH:ADZUNA] Found {N} postings — saved to {path}`.
 
-Capture the output and parse it as the raw results list. For each result, add the fields `platform: "adzuna"`, `applicant_count: null`, `employment_type: "full-time"`, and `location_note: "Remote, Canada"` before saving.
+You do **not** post-process the results or write the file yourself — the module already did. Your only remaining task is the company DB enrichment below.
 
 ## Write Company Records to DB
+
+Read the file the module just wrote (`$JOB_DATA_ROOT/jobs/adzuna-{YYYY-MM-DD}.json`) to get the postings list.
 
 Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
 
@@ -54,7 +56,7 @@ One call per unique company. Print: `[ADZUNA] Wrote {N} company records to DB`
 
 ## Output
 
-Save results to `$JOB_DATA_ROOT/jobs/adzuna-{YYYY-MM-DD}.json` (today's date):
+The module already wrote `$JOB_DATA_ROOT/jobs/adzuna-{YYYY-MM-DD}.json` in the consolidator-ready schema below — you do not write or modify this file:
 
 ```json
 {
@@ -71,15 +73,14 @@ Save results to `$JOB_DATA_ROOT/jobs/adzuna-{YYYY-MM-DD}.json` (today's date):
       "applicant_count": null,
       "employment_type": "full-time",
       "location_note": "Remote, Canada",
-      "description_summary": "2-3 sentence summary of the role and key requirements"
+      "description_summary": "2-3 sentence summary of the role and key requirements",
+      "job_description_text": "Full description text, used by the scorer"
     }
   ]
 }
 ```
 
-Use `null` for fields not available in the API response.
-
-After saving, print: `[ADZUNA] Found {N} postings — saved to {path}`
+Forward the module's `[API-SEARCH:ADZUNA] Found {N} postings — saved to {path}` line in your final report.
 
 
 ## Post-Task Reflection and Error Logging

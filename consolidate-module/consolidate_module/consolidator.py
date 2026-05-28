@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-PLATFORMS = ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "research"]
+PLATFORMS = ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "lever", "research"]
 
 
 def _resolve_paths() -> tuple[Path, Path]:
@@ -74,12 +74,11 @@ def _dedup(
             continue
         if url in existing_urls:
             removed_existing += 1
-            continue
-        if url in seen:
+        elif url in seen:
             removed_within += 1
-            continue
-        seen.add(url)
-        deduped.append(p)
+        else:
+            seen.add(url)
+            deduped.append(p)
     return deduped, removed_existing, removed_within
 
 

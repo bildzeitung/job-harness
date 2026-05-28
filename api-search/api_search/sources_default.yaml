@@ -1,0 +1,77 @@
+# Per-source search data. Packaged default — edit in the repo to tune.
+#
+# adzuna     : keyword search driven by candidate-summary target_titles.
+# greenhouse : Greenhouse public board API, one board per slug.
+# lever      : Lever public postings API, one board per slug.
+
+adzuna:
+  results_per_page: 50
+  full_time: 1
+
+greenhouse:
+  slugs:
+    - shopify
+    - stripe
+    - datadog
+    - hashicorp
+    - mongodb
+    - elastic
+    - confluent
+    - cloudflare
+    - fastly
+    - vercel
+    - temporal
+    - planetscale
+    - cockroachlabs
+    - samsara
+    - ramp
+    - brex
+    - rippling
+    - figma
+    - notion
+    - airtable
+    - retool
+    - benchling
+    - veeva
+    - flatiron
+    - doximity
+    - privia
+    - healthgorilla
+    - 1password
+    - wealthsimple
+    - d2l
+    - unity
+    - hootsuite
+    - clio
+    - lightspeed
+    - cohere
+    - adeptai
+    - prefect
+    - dbt-labs
+    - airbyte
+    - starburst
+
+lever:
+  slugs:
+    - asana
+    - carta
+    - lattice
+    - gusto
+    - brainly
+    - bolt
+    - plaid
+    - segment
+    - intercom
+    - hubspot
+    - clio
+    - hootsuite
+    - later
+    - vidyard
+    - wealthsimple
+    - dremio
+    - starburst
+    - airbyte
+    - prefect
+    - cohere
+    - scale
+    - weights-biases

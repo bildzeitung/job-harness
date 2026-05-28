@@ -3,6 +3,6 @@ rendercv[full]
 -e ./scoring-module[dev]
 -e ./consolidate-module[dev]
 -e ./email-parser[dev]
--e ./adzuna-search[dev]
+-e ./api-search[dev]
 -e ./tui[dev]
 linkedin-scraper-mcp
