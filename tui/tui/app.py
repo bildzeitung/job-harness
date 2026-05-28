@@ -8,16 +8,19 @@ from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
 
-from tui.scorer_panel import ScorerPanel
+from tui.widgets import CompanyPanel, ScorerPanel
 
 STATE_STYLES: dict[str, str] = {
     "new": "bold green",
     "scored": "bold cyan",
     "selected": "bold yellow",
     "skipped": "dim red",
+    "rejected": "dim red",
     "prepared": "bold magenta",
     "applied": "bold red",
 }
+
+_REJECTABLE_STATES = {"selected", "scored", "new"}
 
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
@@ -36,6 +39,7 @@ class JobViewerApp(App):
         Binding("t", "switch_tab", "Switch Tab"),
         Binding("p", "prepare_job", "Prepare"),
         Binding("a", "mark_applied", "Applied"),
+        Binding("x", "mark_rejected", "Reject"),
         Binding("S", "score_new", "Score New"),
         Binding("o", "toggle_output", "Output", show=True),
         Binding("j", "scroll_details_down", "Scroll ↓", show=False),
@@ -47,7 +51,6 @@ class JobViewerApp(App):
         self.db_path = db_path
         self._engine = None
         self._postings: list = []
-        self._companies: list = []
         self._details_visible = False
         self._sort_by = "state"
         self._job_col_key = None
@@ -64,7 +67,7 @@ class JobViewerApp(App):
                         yield Static(id="details-content")
                     yield ScorerPanel(id="output-panel")
             with TabPane("Companies", id="companies"):
-                yield DataTable(id="companies-table", cursor_type="row", zebra_stripes=True)
+                yield CompanyPanel(id="company-panel")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -73,13 +76,14 @@ class JobViewerApp(App):
         try:
             self._engine = make_engine(self.db_path)
             self._postings = get_postings(self._engine, self._sort_by)
-            self._companies = get_companies(self._engine)
+            companies = get_companies(self._engine)
         except Exception as e:
             self.exit(f"Error reading database: {e}")
             return
 
         self._init_jobs_table()
-        self._init_companies_table()
+        self.query_one(CompanyPanel).load(companies)
+        self._refresh_subtitle()
 
         self.query_one("#details-panel").display = False
         self.query_one("#output-panel").display = False
@@ -111,50 +115,22 @@ class JobViewerApp(App):
 
         self.title = f"Job Viewer — {len(self._postings)} postings"
 
-    def _init_companies_table(self) -> None:
-        table = self.query_one("#companies-table", DataTable)
-        table.clear(columns=True)
-        table.add_column("Company", width=30)
-        table.add_column("Remote", width=8)
-        table.add_column("Canada", width=8)
-        table.add_column("Last Seen", width=12)
-        table.add_column("Notes")
-
-        for company in self._companies:
-            remote = (
-                "✓"
-                if company.remote_confirmed
-                else ("✗" if company.remote_confirmed is False else "—")
-            )
-            canada = (
-                "✓"
-                if company.canada_confirmed
-                else ("✗" if company.canada_confirmed is False else "—")
-            )
-            last_seen = (company.last_seen_date or "—")[:10]
-            table.add_row(
-                company.name or "—",
-                remote,
-                canada,
-                last_seen,
-                company.notes or "—",
-                key=company.name,
-            )
-
-        self.sub_title = f"{len(self._companies)} companies"
+    def _refresh_subtitle(self) -> None:
+        self.sub_title = f"{self.query_one(CompanyPanel).count} companies"
 
     def action_refresh(self) -> None:
         from tui.db import get_companies, get_postings
 
         try:
             self._postings = get_postings(self._engine, self._sort_by)
-            self._companies = get_companies(self._engine)
+            companies = get_companies(self._engine)
         except Exception as e:
             self.notify(f"Refresh failed: {e}", severity="error")
             return
 
         self._init_jobs_table()
-        self._init_companies_table()
+        self.query_one(CompanyPanel).load(companies)
+        self._refresh_subtitle()
         self.query_one("#details-panel").display = False
         self._details_visible = False
 
@@ -180,7 +156,7 @@ class JobViewerApp(App):
         tabs = self.query_one("#tabs", TabbedContent)
         if tabs.active == "jobs":
             tabs.active = "companies"
-            self.query_one("#companies-table", DataTable).focus()
+            self.query_one(CompanyPanel).focus_table()
         else:
             tabs.active = "jobs"
             self.query_one("#jobs-table", DataTable).focus()
@@ -273,6 +249,18 @@ class JobViewerApp(App):
         panel.display = not panel.display
 
     def action_mark_applied(self) -> None:
+        self._update_posting_status(
+            "applied", lambda p: p.status != "applied", "Already marked as applied"
+        )
+
+    def action_mark_rejected(self) -> None:
+        self._update_posting_status(
+            "rejected",
+            lambda p: (p.status or "new") in _REJECTABLE_STATES,
+            f"Only {sorted(_REJECTABLE_STATES)} jobs can be rejected",
+        )
+
+    def _update_posting_status(self, new_status: str, allowed, warn_msg: str) -> None:
         from tui.db import update_status
 
         tabs = self.query_one("#tabs", TabbedContent)
@@ -283,22 +271,22 @@ class JobViewerApp(App):
         if row < 0 or row >= len(self._postings):
             return
         posting = self._postings[row]
-        if posting.status == "applied":
-            self.notify("Already marked as applied", severity="warning")
+        if not allowed(posting):
+            self.notify(warn_msg, severity="warning")
             return
         try:
-            update_status(self._engine, posting.url, "applied")
+            update_status(self._engine, posting.url, new_status)
         except Exception as e:
             self.notify(f"Failed to update status: {e}", severity="error")
             return
-        posting.status = "applied"
+        posting.status = new_status
         table.update_cell(
             posting.url,
             self._state_col_key,
-            Text("applied", style=STATE_STYLES["applied"]),
+            Text(new_status, style=STATE_STYLES.get(new_status, "white")),
             update_width=False,
         )
-        self.notify(f"Marked as applied: {posting.display_name}")
+        self.notify(f"Marked as {new_status}: {posting.display_name}")
 
     def action_scroll_details_down(self) -> None:
         if self._details_visible:
