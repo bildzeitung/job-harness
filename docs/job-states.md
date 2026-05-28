@@ -20,6 +20,7 @@ stateDiagram-v2
     selected --> rejected : user rejects in TUI
 
     prepared --> applied : user marks applied
+    prepared --> rejected : user rejects in TUI
 
     skipped --> [*]
     applied --> [*]
@@ -34,9 +35,9 @@ stateDiagram-v2
 | `scored` | `scoring_module` | Scored across 5 dimensions; all score fields populated. Eligible for selection. | `selected` (if top-5 ≥ 75), `rejected`, or stays `scored` |
 | `skipped` | `job-preparer` pre-filter | Hard disqualifier detected before scoring — US-only, on-site, intern/entry-level, or relocation required. No further processing. | — (terminal) |
 | `selected` | `job-preparer` | Chosen as a top-5 posting (final\_score ≥ 75). A pipeline task has been created. | `prepared` or `rejected` |
-| `prepared` | `job-pipeline-worker` | Tailored resume and cover letter PDFs have been rendered. Ready for submission. | `applied` |
+| `prepared` | `job-pipeline-worker` | Tailored resume and cover letter PDFs have been rendered. Ready for submission. | `applied` or `rejected` |
 | `applied` | user (TUI `a` key) | Application has been submitted. | — (terminal) |
-| `rejected` | user (TUI `x` key) | User has decided not to apply. Reachable from `new`, `scored`, or `selected`. | — (terminal) |
+| `rejected` | user (TUI `x` key) | User has decided not to apply. Reachable from `new`, `scored`, `selected`, or `prepared`. | — (terminal) |
 
 ### Notes
 
