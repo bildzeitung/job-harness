@@ -1,6 +1,7 @@
 rendercv[full]
 -e ./harness-db[dev]
 -e ./scoring-module[dev]
+-e ./consolidate-module[dev]
 -e ./email-parser[dev]
 -e ./adzuna-search[dev]
 -e ./tui[dev]

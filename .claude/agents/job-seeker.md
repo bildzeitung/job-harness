@@ -145,90 +145,27 @@ Each agent writes its own temp file:
 
 Wait for all spawned agents to complete before proceeding.
 
-## Step 3: Query Existing URLs from DB
+## Step 3: Consolidate
 
-Use ToolSearch with `query: "select:mcp__sqlite__read_query"` to load the tool. Call:
+Once every spawned sub-agent has completed, run the `consolidate_module` script. It reads each platform's `{platform}-{YYYY-MM-DD}.json` from `$JOB_DATA_ROOT/jobs/` (missing files are treated as zero results), queries existing URLs from the DB, deduplicates against the DB **and** within the batch, writes the audit log `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.json`, and inserts new rows into `companies` → `postings` → `company_postings` in a single transaction.
 
-```sql
-SELECT url FROM postings
+Run it from the harness venv with today's date:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
+python -m consolidate_module --date $(date +%F)
 ```
 
-Collect the result as a set (`existing_urls`). Any URL in this set has already been ingested (regardless of its current status: new, scored, selected, prepared, applied, etc.) and must not be re-inserted.
+The script handles all SQL — there are no further `INSERT` calls for this step. Empty/unknown company values are skipped for the company and link rows (matching prior behavior); existing company rows are preserved (`ON CONFLICT DO NOTHING`), so enrichment written by sub-agents like `job-seeker-adzuna` (e.g. `canada_confirmed = 1`) is not clobbered.
 
-## Step 4: Merge and Deduplicate
+The script's stdout includes per-platform counts, removed-as-existing, removed-as-within-batch, total inserted, and the audit-log path. Forward that output into your Step 4 report.
 
-Read all temp files that exist (some agents may have found 0 results or been skipped). Merge all `postings` arrays into a single list.
-
-Deduplicate by URL:
-- Remove any posting whose URL already appears in `existing_urls` (queried from the DB in Step 3)
-- Remove duplicate URLs within the merged set (keep first occurrence)
-
-## Step 5: Save Combined Results
-
-### 5a. Write audit log
-
-Save the merged, deduplicated list to `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.json` (informational audit log — downstream agents now read from the DB):
-
-```json
-{
-  "search_date": "YYYY-MM-DD",
-  "total_found": 0,
-  "by_platform": {
-    "linkedin": 0,
-    "indeed": 0,
-    "adzuna": 0,
-    "ziprecruiter": 0,
-    "greenhouse": 0,
-    "research": 0
-  },
-  "postings": [
-    {
-      "title": "Principal Software Engineer",
-      "company": "Acme Corp",
-      "url": "https://...",
-      "platform": "linkedin|indeed|adzuna|ziprecruiter|greenhouse|research",
-      "post_date": "YYYY-MM-DD",
-      "applicant_count": null,
-      "employment_type": "full-time|contract|freelance",
-      "location_note": "Remote, Canada OK",
-      "description_summary": "2-3 sentence summary",
-      "job_description_text": "Full description text, or null if not available"
-    }
-  ]
-}
-```
-
-### 5b. Insert into SQLite DB
-
-Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the tool.
-
-For each posting in the deduplicated list, run **three** `INSERT OR IGNORE` statements **in this order** — the company row MUST be inserted before the posting row, and the link row last. Today's date is `first_seen`. Escape single quotes in string values by doubling them (`'` → `''`). Use SQL `NULL` (not the string `'null'`) for unknown integers and missing text.
-
-1. **Company first** — guarantees the company row exists before the posting and the link reference it. Only the name is set here; `job-seeker-research`, `job-scorer`, and `job-seeker-company` fill in the rest later.
-   ```sql
-   INSERT OR IGNORE INTO companies (name, last_seen_date) VALUES ('Acme Corp', '2026-05-19')
-   ```
-2. **Posting next**:
-   ```sql
-   INSERT OR IGNORE INTO postings (url, title, company, platform, post_date, applicant_count, employment_type, location_note, description_summary, job_description_text, first_seen, status)
-   VALUES ('https://...', 'Principal Software Engineer', 'Acme Corp', 'linkedin', '2026-05-19', NULL, 'full-time', 'Remote, Canada OK', '2-3 sentence summary', NULL, '2026-05-19', 'new')
-   ```
-3. **Link row last** — one row per job:
-   ```sql
-   INSERT OR IGNORE INTO company_postings (url, company_name) VALUES ('https://...', 'Acme Corp')
-   ```
-
-Set `job_description_text` to the full description text from the sub-agent's output if it was provided, or `NULL` if not. `INSERT OR IGNORE` silently discards any URL already in the table (safety net against race conditions). Skip the company and link inserts for any posting whose `company` is empty/unknown.
-
-## Step 6: Report
+## Step 4: Report
 
 Print a summary:
 - MCP probe results (LinkedIn, Indeed, ZipRecruiter: connected or skipped with reason)
-- Postings found per platform (before deduplication)
-- How many removed because URL already in DB
-- How many removed as within-batch duplicates
-- Total new postings inserted into DB
-- Path to the saved audit log JSON
+- The consolidation summary printed by `consolidate_module` (per-platform raw counts, removed-as-existing, removed-as-within-batch, total inserted, audit-log path)
 - Recommended next step: invoke the `job-preparer` agent (no file argument needed — it queries the DB directly)
 
 

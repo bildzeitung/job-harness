@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "consolidate-module"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0",
+    "typer>=0.12",
+    "harness-db",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "nox>=2024.3.2", "ruff>=0.6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["consolidate_module"]
+
+[tool.ruff]
+line-length = 100
+lint.extend-select = ["I"]
