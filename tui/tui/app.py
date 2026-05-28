@@ -20,7 +20,7 @@ STATE_STYLES: dict[str, str] = {
     "applied": "bold red",
 }
 
-_REJECTABLE_STATES = {"selected", "scored", "new"}
+_REJECTABLE_STATES = {"selected", "scored", "new", "prepared"}
 
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
