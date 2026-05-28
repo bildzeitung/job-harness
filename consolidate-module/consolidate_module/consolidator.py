@@ -48,7 +48,12 @@ def _load_platform_file(jobs_dir: Path, platform: str, batch_date: str) -> list[
     except (OSError, json.JSONDecodeError) as exc:
         print(f"[WARN] Could not read {f}: {exc}", file=sys.stderr)
         return []
-    postings = data.get("postings", []) if isinstance(data, dict) else []
+    if isinstance(data, list):
+        postings = data
+    elif isinstance(data, dict):
+        postings = data.get("postings", [])
+    else:
+        postings = []
     for p in postings:
         p.setdefault("platform", platform)
     return postings
