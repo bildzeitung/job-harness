@@ -14,6 +14,7 @@ Work through each of the following subsections. Each subsection is a different m
 
 - [ ] the `api_search` calls could be done in parallel. Verify and if so, implement.
 - [ ] below, a `job-seeker python script` is listed. This action was to `Generate INSERT statements for all postings`. Can this be moved into a script that reads the JSON and loads it into the DB? Generating the SQL and then using the statements seems inefficient. Also, since the script would use SQLAlchemy, we get better, more secure escaping.
+- [ ] BUG: the report showed: `0 (Agent tool unavailable in sub-agent session)` for the `research` source; this must be fixed. 
 
 ### Bash calls
 
