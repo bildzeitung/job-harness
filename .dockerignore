@@ -1,0 +1,14 @@
+# Keep Docker build contexts small. Retains harness-db, web, requirements.txt,
+# CLAUDE.md, and .claude/agents (needed by the agent-runner).
+.git
+.claude/worktrees/
+venv/
+.venv/
+web/.web/
+**/__pycache__/
+**/*.pyc
+*.egg-info/
+.pytest_cache/
+.nox/
+node_modules/
+rendercv_output/

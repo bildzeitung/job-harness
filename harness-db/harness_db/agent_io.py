@@ -1,0 +1,92 @@
+"""Shared helpers for launching harness agents via the `claude` CLI.
+
+Holds the stream-json event formatter and the score/prepare prompt builders so the
+TUI and the web app render agent output and build prompts identically.
+"""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+__all__ = [
+    "REJECTABLE_STATES",
+    "PostingLike",
+    "format_event",
+    "build_score_prompt",
+    "build_prepare_prompt",
+]
+
+# Statuses a posting may be in for a "reject" action to be allowed.
+REJECTABLE_STATES: frozenset[str] = frozenset({"selected", "scored", "new", "prepared"})
+
+# Max characters of a tool_use detail line to show before truncating.
+_TOOL_DETAIL_MAXLEN = 100
+
+
+class PostingLike(Protocol):
+    """Minimal posting shape needed to build agent prompts.
+
+    Satisfied by both the SQLAlchemy ``Posting`` model and the web ``PostingVM``.
+    """
+
+    url: str
+    company: str | None
+    title: str | None
+
+
+def format_event(event: dict) -> list[str]:
+    """Turn one stream-json event into human-readable display lines."""
+    etype = event.get("type")
+
+    if etype == "system" and event.get("subtype") == "init":
+        return ["── session started ──"]
+
+    if etype == "assistant":
+        out: list[str] = []
+        for block in event.get("message", {}).get("content", []):
+            btype = block.get("type")
+            if btype == "text":
+                text = block.get("text", "").strip()
+                if text:
+                    out.extend(text.splitlines())
+            elif btype == "tool_use":
+                name = block.get("name", "?")
+                inp = block.get("input", {})
+                if name == "Task":
+                    detail = inp.get("subagent_type") or inp.get("description") or ""
+                elif name == "Bash":
+                    detail = inp.get("command", "")
+                else:
+                    detail = inp.get("description") or inp.get("file_path") or ""
+                detail = str(detail).replace("\n", " ")[:_TOOL_DETAIL_MAXLEN]
+                out.append(f"→ {name}: {detail}" if detail else f"→ {name}")
+        return out
+
+    if etype == "result":
+        dur = event.get("duration_ms")
+        suffix = f" ({dur} ms)" if dur is not None else ""
+        if event.get("is_error"):
+            return [f"✗ error{suffix}"]
+        return [f"✓ done{suffix}"]
+
+    return []
+
+
+def build_score_prompt(posting: PostingLike) -> str:
+    """Prompt to score a single 'new' posting and persist the result."""
+    return (
+        "Use the job-scorer agent to score a single job posting. "
+        f"The posting URL is: {posting.url}\n"
+        f"Company: {posting.company or 'unknown'}\n"
+        f"Title: {posting.title or 'unknown'}\n"
+        "Score this one posting only. Write the score to the database and set status to 'scored'."
+    )
+
+
+def build_prepare_prompt(posting: PostingLike) -> str:
+    """Prompt to run the full preparation pipeline for a 'selected' posting."""
+    return (
+        "Use the job-preparer agent. A job is already in 'selected' state in the database "
+        f"(URL: {posting.url}). Skip scoring and selection — go straight to running the full "
+        "pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
+    )

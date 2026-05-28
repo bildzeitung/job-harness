@@ -1,0 +1,40 @@
+"""Locate the job-harness SQLite database.
+
+Promoted out of the TUI so every front-end resolves the DB path the same way:
+the JOB_DATA_ROOT env var first, then env.JOB_DATA_ROOT in .claude/settings.local.json.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+__all__ = ["get_db_path"]
+
+_DB_RELATIVE_PATH = ("jobs", "postings.db")
+
+
+def _repo_root() -> Path:
+    here = Path.cwd()
+    for parent in [here, *here.parents]:
+        if (parent / ".git").exists():
+            return parent
+    raise RuntimeError("Could not locate repo root (no .git found above cwd).")
+
+
+def get_db_path() -> Path:
+    job_data_root = os.environ.get("JOB_DATA_ROOT")
+    if not job_data_root:
+        settings = _repo_root() / ".claude" / "settings.local.json"
+        if settings.exists():
+            try:
+                data = json.loads(settings.read_text())
+            except ValueError as e:
+                raise RuntimeError(f"Malformed {settings}: {e}") from e
+            job_data_root = data.get("env", {}).get("JOB_DATA_ROOT")
+    if not job_data_root:
+        raise RuntimeError(
+            "JOB_DATA_ROOT not set. Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
+        )
+    return Path(job_data_root).joinpath(*_DB_RELATIVE_PATH)

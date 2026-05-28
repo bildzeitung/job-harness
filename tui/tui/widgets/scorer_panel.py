@@ -5,6 +5,7 @@ import os
 import subprocess
 from datetime import datetime
 
+from harness_db.agent_io import format_event
 from textual import work
 from textual.app import ComposeResult
 from textual.widget import Widget
@@ -20,44 +21,6 @@ def _dbg(msg: str) -> None:
     ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     with open(_DEBUG_LOG, "a") as f:
         f.write(f"{ts}  {msg}\n")
-
-
-def _format_event(event: dict) -> list[str]:
-    """Turn one stream-json event into human-readable display lines."""
-    etype = event.get("type")
-
-    if etype == "system" and event.get("subtype") == "init":
-        return ["── session started ──"]
-
-    if etype == "assistant":
-        out: list[str] = []
-        for block in event.get("message", {}).get("content", []):
-            btype = block.get("type")
-            if btype == "text":
-                text = block.get("text", "").strip()
-                if text:
-                    out.extend(text.splitlines())
-            elif btype == "tool_use":
-                name = block.get("name", "?")
-                inp = block.get("input", {})
-                if name == "Task":
-                    detail = inp.get("subagent_type") or inp.get("description") or ""
-                elif name == "Bash":
-                    detail = inp.get("command", "")
-                else:
-                    detail = inp.get("description") or inp.get("file_path") or ""
-                detail = str(detail).replace("\n", " ")[:100]
-                out.append(f"→ {name}: {detail}" if detail else f"→ {name}")
-        return out
-
-    if etype == "result":
-        dur = event.get("duration_ms")
-        suffix = f" ({dur} ms)" if dur is not None else ""
-        if event.get("is_error"):
-            return [f"✗ error{suffix}"]
-        return [f"✓ done{suffix}"]
-
-    return []
 
 
 class ScorerPanel(Widget):
@@ -115,7 +78,7 @@ class ScorerPanel(Widget):
                     _dbg(f"non-json line: {line[:120]!r}")
                     self.app.call_from_thread(log.write, line)
                     continue
-                display = _format_event(event)
+                display = format_event(event)
                 _dbg(f"event type={event.get('type')} -> {len(display)} lines")
                 for text in display:
                     total_lines += 1

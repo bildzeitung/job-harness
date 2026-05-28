@@ -1,0 +1,39 @@
+# Orchestrates the job-harness web UI.
+#
+#   docker compose -f web/docker-compose.yml up --build web          # browse + status updates
+#   docker compose -f web/docker-compose.yml up --build              # + agent triggering
+#
+# Required env on the host (e.g. an .env file next to this one):
+#   JOB_DATA_ROOT   absolute path to your job-data dir (holds jobs/postings.db)
+#   HOME            used to mount ~/.claude/.credentials.json into the runner
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    environment:
+      JOB_DATA_ROOT: /data
+      RUNNER_URL: http://agent-runner:8100
+    volumes:
+      - ${JOB_DATA_ROOT}:/data
+    ports:
+      - "3000:3000"
+      - "8000:8000"
+
+  # Optional: only needed for in-browser agent triggering (score / prepare).
+  agent-runner:
+    build:
+      context: ..
+      dockerfile: web/runner/Dockerfile
+    environment:
+      JOB_DATA_ROOT: /data
+      REPO_DIR: /repo
+    volumes:
+      - ${JOB_DATA_ROOT}:/data
+      # The repo so spawned agents see CLAUDE.md / .claude / modules; rw for rendercv output.
+      - ..:/repo
+      # OAuth credentials the claude CLI authenticates with (read-only).
+      - ${HOME}/.claude/.credentials.json:/root/.claude/.credentials.json:ro
+    expose:
+      - "8100"
