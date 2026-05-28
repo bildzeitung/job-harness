@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 __all__ = ["Company", "Posting", "make_engine", "get_postings", "get_companies", "update_status"]
 
-_STATE_ORDER = {"selected": 0, "scored": 1, "new": 2, "applied": 3, "skipped": 4, "rejected": 5}
+_STATE_ORDER = {"prepared": 0, "selected": 1, "scored": 2, "new": 3, "applied": 4, "rejected": 5, "skipped": 6}
 
 
 def _sort_postings(postings: list[Posting], sort_by: str) -> list[Posting]:
