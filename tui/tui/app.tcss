@@ -11,6 +11,10 @@ TabPane {
     padding: 0;
 }
 
+#jobs-panel {
+    height: 1fr;
+}
+
 #jobs-pane {
     height: 1fr;
     layout: vertical;
