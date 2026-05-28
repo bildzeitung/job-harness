@@ -1,7 +1,7 @@
 ---
 name: job-search
 description: Run the full job search harness — seek fresh postings, score them, and prepare tailored resumes and cover letters for the top matches.
-allowed-tools: Read, Write, Bash, AskUserQuestion, Agent(job-seeker, job-preparer)
+allowed-tools: Read, Write, Bash, Agent(job-seeker, job-preparer)
 ---
 
 Run the complete job search pipeline.
@@ -15,18 +15,14 @@ The 6 available sources are: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `gr
 - `--only=<csv>` → run only those sources, disable all others (e.g. `--only=linkedin,adzuna`)
 - Compute `enabled_sources` from the args and skip to writing the config file below.
 
-**If no args were provided:** use AskUserQuestion with `multiSelect: true` — ask which sources to **skip**. Selecting nothing means run all.
+**If no args were provided:** ask the user, in plain text, which sources to **skip** as a comma-separated list. Do **not** use AskUserQuestion. Wait for the reply before continuing. An empty reply (or "none") means run all 6.
 
-Question: "Which sources should be skipped this run? (Select none to run all)"
-Options:
-- label `linkedin`, description "LinkedIn MCP server (requires active browser session)"
-- label `indeed`, description "Indeed MCP server"
-- label `adzuna`, description "Adzuna Canada REST API (no MCP needed)"
-- label `ziprecruiter`, description "ZipRecruiter MCP server"
-- label `greenhouse`, description "Greenhouse.io and Lever.co public APIs (no MCP needed)"
-- label `research`, description "Non-job-board research: Wellfound, Ashby, funded startups, niche boards"
+Ask:
 
-Compute `enabled_sources` as all 6 minus whichever the user selected to skip.
+> Which sources should be skipped this run? Reply with a comma-separated list, or leave empty / say "none" to run all.
+> Available: `linkedin` (MCP, needs active browser session), `indeed` (MCP), `adzuna` (REST API), `ziprecruiter` (MCP), `greenhouse` (Greenhouse.io + Lever.co public APIs), `research` (non-job-board: Wellfound, Ashby, funded startups, niche boards).
+
+Parse the reply: split on commas, trim whitespace, lowercase, and keep only values matching the 6 known source names (ignore anything unrecognized). Compute `enabled_sources` as all 6 minus the parsed skip list.
 
 **Write the config file:**
 
