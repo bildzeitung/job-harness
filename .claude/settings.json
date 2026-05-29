@@ -70,6 +70,26 @@
     "spinnerTipsEnabled": false,
     "hooks": {
         "PostToolUse": [
+            {
+                "matcher": "Write|Edit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "S=$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/capture-adhoc-python.sh; [ -f $S ] && bash $S || true",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "S=$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/capture-adhoc-python.sh; [ -f $S ] && bash $S || true",
+                        "timeout": 10
+                    }
+                ]
+            }
         ]
     }
 }
