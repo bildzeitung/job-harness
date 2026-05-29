@@ -1,7 +1,7 @@
 ---
 name: "job-seeker"
 description: "Searches LinkedIn, Indeed, Adzuna, ZipRecruiter, Greenhouse/Lever, and non-job-board sources for remote software engineering jobs available in Canada, reads the resume for context, and saves results for scoring. Part of the job search harness."
-tools: Read, Write, Bash, Agent, ToolSearch, mcp__linkedin__get_my_profile, mcp__linkedin__search_jobs, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_ZipRecruiter__search_jobs, mcp__sqlite__create_table, mcp__sqlite__read_query, mcp__sqlite__write_query
+tools: Read, Write, Bash, Agent, WebSearch, WebFetch, ToolSearch, mcp__linkedin__get_my_profile, mcp__linkedin__search_jobs, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_ZipRecruiter__search_jobs, mcp__sqlite__create_table, mcp__sqlite__read_query, mcp__sqlite__write_query
 model: sonnet
 color: green
 ---
@@ -134,6 +134,23 @@ MCP-dependent sources — spawn only if in `enabled_sources` **and** the probe s
 - `subagent_type: job-seeker-linkedin` — if `linkedin` in `enabled_sources` and LinkedIn probe succeeded
 - `subagent_type: job-seeker-indeed` — if `indeed` in `enabled_sources` and Indeed probe succeeded
 - `subagent_type: job-seeker-ziprecruiter` — if `ziprecruiter` in `enabled_sources` and ZipRecruiter probe succeeded
+
+### Fallback when the Agent tool is unavailable
+
+You may be running as a sub-agent yourself (e.g. spawned by the `job-search` skill). In that case the **Agent tool can be unavailable** and any `Agent` call fails with *"Agent tool unavailable in sub-agent session"*. **Do not report a source as `0` because of this** — recover every source inline:
+
+- **adzuna / greenhouse / research-via-API** are deterministic: run them yourself via Bash instead of spawning their sub-agents:
+  ```bash
+  PROJECT_ROOT=$(git rev-parse --show-toplevel)
+  . "$PROJECT_ROOT/venv/bin/activate"
+  python -m api_search adzuna      # writes adzuna-{date}.json
+  python -m api_search greenhouse  # writes greenhouse-{date}.json
+  python -m api_search lever       # writes lever-{date}.json
+  ```
+- **linkedin / indeed / ziprecruiter** — call their MCP tools directly (they are in your own tool list) and write the `{platform}-{date}.json` files yourself in the consolidator schema.
+- **research** has no deterministic module — it needs reasoning over web results. Run it **inline using your own `WebSearch` and `WebFetch` tools**, following the search strategy and NON-NEGOTIABLE requirements in the `job-seeker-research` agent definition (recently funded companies, Wellfound/Ashby/niche boards, FHIR-specific roles; remote + Canada-eligible + senior only). Write the results to `$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.json` in the same consolidator-ready posting schema the other sources use (`platform: "research"`, with `title`, `company`, `url`, `post_date`, `applicant_count`, `employment_type`, `location_note`, `description_summary`), exactly as the `job-seeker-research` sub-agent would.
+
+Decide once, up front: attempt a single `Agent` spawn; if it fails with the sub-agent-session error, switch to the inline path above for **all** enabled sources for the rest of this run. Never silently emit `0 (Agent tool unavailable in sub-agent session)` for any source.
 
 Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes two — one per ATS):
 - `job-data/jobs/linkedin-{YYYY-MM-DD}.json` (if spawned)
