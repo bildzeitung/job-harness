@@ -41,13 +41,14 @@ Otherwise:
   "requirements": {
     "work_type": "fully remote",
     "eligibility": "Canada-eligible",
-    "employment": ["full-time", "contract", "freelance"],
-    "exclude": ["hybrid", "US only", "US work authorization required", "US citizens only", "junior", "intern", "entry-level"]
+    "employment": ["full-time", "contract", "freelance"]
   }
 }
 ```
 
-Fill in actual values from the resume YAML — do not leave placeholders. Read `cv.name` from the YAML for the `name` field. The `stack`, `domains`, and `target_titles` arrays should reflect the actual resume content.
+Fill in actual values from the resume YAML — do not leave placeholders. Read `cv.name` from the YAML for the `name` field. The `stack`, `domains`, and `target_titles` arrays should reflect the actual resume content. These positive fields drive every searcher's queries (`target_titles` × `domains`) and filters (`seniority_keywords`, `requirements`).
+
+Hard **exclusions** are NOT part of this summary — they live in the single, user-editable `disqualifiers.yaml` (`prefilter` section, seeded in Step 0d) so every searcher, `job-preparer`, and the scorer apply one consistent list. Do not add an `exclude` array here.
 
 ## Step 0b: Initialize SQLite DB Schema
 
@@ -95,12 +96,12 @@ Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 
 
 ## Step 0d: Ensure Disqualifiers Config Exists
 
-The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are centralized in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. If it does not exist, seed it from the bundled default so downstream agents (`job-preparer`, `job-scorer`) and the scoring script can read it:
+The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are centralized in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It is the single source of truth for **early disqualification** — the platform searchers, `api_search`, `job-preparer`, and the scorer all read it. If it does not exist, seed it from the bundled default so every consumer can read it:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
-[ -e "$DEST" ] || cp "$PROJECT_ROOT/scoring-module/scoring_module/disqualifiers.default.yaml" "$DEST"
+[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/disqualifiers.default.yaml" "$DEST"
 ```
 
 Do not overwrite an existing copy — the user may have tuned it.

@@ -19,39 +19,41 @@ Read `$JOB_DATA_ROOT/candidate-summary.json` for the candidate profile — key s
 
 ## Your Mission
 
-Find companies that are **actively hiring** for the candidate's profile but whose postings do not appear on LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever. Focus on:
+Find companies that are **actively hiring** for the candidate's profile but whose postings do not appear on LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever. First read `candidate-summary.json` and treat its `target_titles`, `domains`, `stack`, and `requirements` as your search inputs — do not hard-code titles or domains. Focus on:
 - Companies that recently raised funding (Series A–C) and are scaling their engineering team
-- Companies expanding into Canadian markets or hiring remote-first globally
-- Healthcare tech, cloud infrastructure, and AI/ML platform companies
+- Companies hiring remote-first and open to the candidate's `requirements.eligibility` location
+- Companies in the candidate's `domains` (treat each domain as a search facet)
 - Startups posting on Wellfound or Ashby ATS, or directly on their careers pages
 
 ## Search Strategy
 
+Build **every** query from `candidate-summary.json` — substitute the candidate's `target_titles`, `domains`, `stack`, and `requirements.eligibility` into the bracketed slots below. Cover the title × domain cross-product rather than a fixed keyword list, and lean on the candidate's most distinctive `domains`/`stack` entries (their differentiators).
+
 ### Round 1: Recently Funded / Growing Companies
 
-Search for companies that recently raised funding and would be hiring senior engineers:
-- `"series B" OR "series C" funding "hiring engineers" remote 2025 OR 2026 cloud infrastructure`
-- `recently funded healthcare tech company hiring "principal engineer" OR "staff engineer" remote`
-- `startup hiring "cloud architect" OR "platform engineer" remote Canada -linkedin -indeed`
-- `site:techcrunch.com "raises" "million" engineering remote 2025`
-- `site:venturebeat.com funding engineering platform cloud 2025 hiring`
+Search for recently funded companies hiring senior engineers in the candidate's domains:
+- `"series B" OR "series C" funding "hiring engineers" remote <recent years> <domain>`
+- `recently funded <domain> company hiring "<target title>" OR "<target title>" remote`
+- `startup hiring "<target title>" OR "<target title>" remote <eligibility> -linkedin -indeed`
+- `site:techcrunch.com "raises" "million" engineering remote <recent year>`
+- `site:venturebeat.com funding engineering <domain> <recent year> hiring`
 
 ### Round 2: Niche Job Boards and Ashby ATS
 
-Search boards not covered by other pipeline agents (not LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever):
-- `site:wellfound.com "principal engineer" remote Canada` (Wellfound / AngelList)
-- `site:remote.co "principal engineer" cloud`
-- `site:weworkremotely.com "principal engineer" OR "staff engineer"`
-- `site:remoteok.com "principal engineer" cloud OR platform`
-- `site:ashbyhq.com "principal engineer" remote Canada` (Ashby ATS — not covered by greenhouse agent)
-- `site:jobs.ashbyhq.com "staff engineer" remote cloud`
+Search boards not covered by other pipeline agents (not LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever), substituting target titles and domains:
+- `site:wellfound.com "<target title>" remote <eligibility>` (Wellfound / AngelList)
+- `site:remote.co "<target title>" <domain>`
+- `site:weworkremotely.com "<target title>" OR "<target title>"`
+- `site:remoteok.com "<target title>" <domain>`
+- `site:ashbyhq.com "<target title>" remote <eligibility>` (Ashby ATS — not covered by greenhouse agent)
+- `site:jobs.ashbyhq.com "<target title>" remote <domain>`
 
-### Round 3: Healthcare Tech and FHIR Specific
+### Round 3: Differentiator Deep Dive
 
-The candidate has rare FHIR expertise — this is a differentiator:
-- `FHIR "principal engineer" OR "staff engineer" remote 2025 OR 2026 -linkedin -indeed`
-- `healthcare interoperability "senior engineer" remote Canada hiring`
-- `"health tech" OR "digital health" "principal engineer" remote -linkedin`
+Pick the candidate's most distinctive `domains`/`stack` entries and search for roles built around them:
+- `<distinctive domain or skill> "<target title>" OR "<target title>" remote <recent years> -linkedin -indeed`
+- `<domain> "senior engineer" remote <eligibility> hiring`
+- `<domain synonym> "<target title>" remote -linkedin`
 
 ## For Each Company Found
 
@@ -62,16 +64,23 @@ The candidate has rare FHIR expertise — this is a differentiator:
 
 Aim for **10–20 unique, verified postings** across all rounds.
 
-## Search Requirements (NON-NEGOTIABLE)
+## Search Requirements
 
-Every posting you surface MUST satisfy ALL of the following:
-1. **Remote** — fully remote or remote-first (not "hybrid", not "remote in [specific city only]")
-2. **Canada-eligible** — explicitly open to Canadian candidates, or no geographic restriction; exclude "US only" / "US work authorization required"
-3. **Seniority match** — titles matching `seniority_keywords` from candidate summary
-4. **Employment type** — full-time, contract, or freelance; exclude internships and junior roles
-5. **Not on other pipeline platforms** — URL must NOT be LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever
+All search inputs come from configuration — nothing here is hard-coded.
 
-Discard any posting that fails criteria 1–4.
+**Positive targets** (from `candidate-summary.json`):
+- `requirements.work_type` (e.g. "fully remote") and `requirements.eligibility` (e.g. "Canada-eligible") — the role must satisfy these, or carry no geographic restriction.
+- `requirements.employment` — allowed employment types.
+- `seniority_keywords` — the posting title must match one of these.
+
+**Research-specific:** the posting URL must NOT be on LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever (those are covered by other agents).
+
+**Hard exclusions — early disqualification** (from `$JOB_DATA_ROOT/disqualifiers.yaml`, the single user-editable source of truth shared with `job-preparer` and the scorer): read that file's `prefilter` section and discard any posting that matches, using the same rules `job-preparer` applies (all case-insensitive):
+- `description_phrases` — any phrase appears in the title or description.
+- `title_terms` — any term appears in the title.
+- `title_terms_unless_senior` — any term appears in the title, UNLESS the title also contains a `seniority_exceptions` term.
+
+Discard matches before saving. Do not invent exclusions beyond the configured lists — when eligibility is genuinely ambiguous (no matching phrase), keep the posting for the scorer.
 
 ## Output
 

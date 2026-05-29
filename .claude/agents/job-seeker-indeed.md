@@ -22,31 +22,31 @@ Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory.
 
 Read `$JOB_DATA_ROOT/candidate-summary.json` for the candidate profile — key skills, target titles, seniority keywords, domains, and requirements. Use `seniority_keywords` to drive search queries and filter results.
 
-## Search Requirements (NON-NEGOTIABLE)
+## Search Requirements
 
-Every job you surface MUST satisfy ALL of the following:
-1. **Remote** — fully remote or remote-first (not "hybrid", not "remote in [specific city]")
-2. **Canada-eligible** — explicitly open to Canadian candidates (not "US only", not requiring US work authorization)
-3. **Seniority match** — titles from `seniority_keywords` in the candidate summary
-4. **Employment type** — full-time, contract, or freelance; exclude internships and junior roles
+All search inputs come from configuration — nothing here is hard-coded.
 
-Discard any posting that fails criteria 1–3.
+**Positive targets** (from `candidate-summary.json`):
+- `requirements.work_type` (e.g. "fully remote") and `requirements.eligibility` (e.g. "Canada-eligible") — the role must satisfy these.
+- `requirements.employment` — allowed employment types.
+- `seniority_keywords` — the posting title must match one of these.
+
+**Hard exclusions — early disqualification** (from `$JOB_DATA_ROOT/disqualifiers.yaml`, the single user-editable source of truth shared with `job-preparer` and the scorer): read that file's `prefilter` section and discard any posting that matches, using the same rules `job-preparer` applies (all case-insensitive):
+- `description_phrases` — any phrase appears in the title or description.
+- `title_terms` — any term appears in the title.
+- `title_terms_unless_senior` — any term appears in the title, UNLESS the title also contains a `seniority_exceptions` term.
+
+Discard matches **before** writing them out, so disqualified noise never enters the pipeline. Do not invent exclusions beyond the configured lists — when eligibility is genuinely ambiguous (no matching phrase), keep the posting for the scorer.
 
 ## Search Strategy
 
-Use `mcp__claude_ai_Indeed__search_jobs` with `country_code: "CA"` and `location: "remote"` for all queries. Run multiple queries to cover the candidate's domains:
+Do not hard-code queries — build them from `candidate-summary.json` so the search follows the candidate's actual profile:
+- **Base queries** — one per entry in `target_titles`.
+- **Domain-narrowed queries** — combine target titles (or the core seniority terms) with entries from `domains` to surface niche roles (e.g. `"staff engineer" <domain>`).
 
-- `search: "principal engineer"` — general principal level
-- `search: "staff engineer cloud"` — staff cloud roles
-- `search: "cloud architect"` — architecture roles
-- `search: "principal software engineer"` — software principal
-- `search: "distinguished engineer"` — distinguished level
-- `search: "platform engineer senior"` — platform/infra
-- `search: "FHIR engineer"` — healthcare interoperability
-- `search: "ML infrastructure engineer"` — AI/ML platform
-- `search: "senior staff engineer"` — senior staff
+Run enough queries (typically 8–12) to cover that title × domain breadth without redundancy. Call `mcp__claude_ai_Indeed__search_jobs` with `country_code: "CA"`, `location: "remote"`, and `search: "<query>"` for each.
 
-For each search result, call `mcp__claude_ai_Indeed__get_job_details` with the job ID to fetch the full description. Verify eligibility (remote, Canada-eligible, seniority) before including.
+For each search result, call `mcp__claude_ai_Indeed__get_job_details` with the job ID to fetch the full description, then apply the Search Requirements above before including.
 
 Aim for **15–25 unique postings** that pass the filters.
 

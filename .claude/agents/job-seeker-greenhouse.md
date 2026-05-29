@@ -12,13 +12,14 @@ You are the Greenhouse/Lever search agent in the job search harness. Your job is
 
 Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory. The module reads `$JOB_DATA_ROOT/candidate-summary.json` itself for seniority keywords — you do not need to load it.
 
-## Search Requirements (NON-NEGOTIABLE)
+## Search Requirements
 
-Every job surfaced MUST satisfy ALL of the following — the module enforces these for you:
-1. **Remote** — fully remote or remote-first
-2. **Canada-eligible** — open to Canadian candidates; excludes "US only" / "US citizens only"
-3. **Seniority match** — titles matching `seniority_keywords` from the candidate summary
-4. **Employment type** — full-time, contract, or freelance; excludes internships and junior roles
+The `api_search` module enforces all of these for you, fully driven by configuration — nothing is hard-coded:
+- **Boards** come from the packaged `sources_default.yaml` slug lists; **seniority** matching uses `seniority_keywords` from `candidate-summary.json`.
+- **Positive filters** — remote, plus the seniority match above.
+- **Hard exclusions** come from `$JOB_DATA_ROOT/disqualifiers.yaml` `prefilter` (the single source of truth shared with `job-preparer` and the scorer): postings matching `description_phrases`, `title_terms`, or `title_terms_unless_senior` are dropped.
+
+You do not implement any of this filtering yourself — just run the module.
 
 ## Running the Search
 
