@@ -13,7 +13,7 @@ from typing import Any
 
 import anthropic
 import httpx
-import yaml
+from harness_db.disqualifiers import load_disqualifiers
 from harness_db.models import Posting, make_engine
 from harness_db.profile import load_candidate_summary
 from sqlalchemy import update as sa_update
@@ -30,27 +30,6 @@ _DB_WRITE_LOCK = threading.Lock()
 JD_FETCH_MIN_LENGTH = 500
 JD_TRUNCATE_LENGTH = 8000
 JD_TRUNCATE_WARN_THRESHOLD = 7900
-
-
-_DEFAULT_DISQUALIFIERS = Path(__file__).parent / "disqualifiers.default.yaml"
-
-
-def _load_disqualifiers() -> dict[str, Any]:
-    """Load the user-editable disqualifiers config from JOB_DATA_ROOT.
-
-    Seeds the live copy from the bundled default on first run so the file is
-    always present and editable in one place.
-    """
-    if not JOB_DATA_ROOT:
-        raise RuntimeError(
-            "JOB_DATA_ROOT not set — needed to read disqualifiers.yaml. "
-            "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
-        )
-    live = Path(JOB_DATA_ROOT) / "disqualifiers.yaml"
-    if not live.exists():
-        live.write_text(_DEFAULT_DISQUALIFIERS.read_text())
-    with open(live) as f:
-        return yaml.safe_load(f) or {}
 
 
 def _render_disqualifiers(config: dict[str, Any]) -> str:
@@ -77,8 +56,7 @@ def _format_candidate_profile(profile: dict[str, Any]) -> str:
         f"Target titles: {', '.join(profile.get('target_titles', []))}",
         f"Requirements: work_type={req.get('work_type', '')}; "
         f"eligibility={req.get('eligibility', '')}; "
-        f"employment={', '.join(req.get('employment', []))}; "
-        f"exclude={', '.join(req.get('exclude', []))}",
+        f"employment={', '.join(req.get('employment', []))}",
     ]
     return "\n".join(lines)
 
@@ -87,7 +65,7 @@ def _load_system_prompt() -> str:
     profile = load_candidate_summary()
     template = (Path(__file__).parent / "system_prompt.txt").read_text()
     template = template.replace("{{CANDIDATE_PROFILE}}", _format_candidate_profile(profile))
-    return template.replace("{{DISQUALIFIERS}}", _render_disqualifiers(_load_disqualifiers()))
+    return template.replace("{{DISQUALIFIERS}}", _render_disqualifiers(load_disqualifiers()))
 
 
 _SYSTEM_PROMPT = _load_system_prompt()

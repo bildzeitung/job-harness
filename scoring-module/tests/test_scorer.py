@@ -12,7 +12,6 @@ from scoring_module.scorer import (
     _age_modifier,
     _competition_modifier,
     _fetch_jd,
-    _load_disqualifiers,
     _render_disqualifiers,
     _sanitize,
     _score_one,
@@ -129,23 +128,8 @@ def test_render_disqualifiers_empty_config():
     assert _render_disqualifiers({}) == "- No disqualifiers: 0"
 
 
-def test_load_disqualifiers_seeds_from_default(tmp_path):
-    # No live file present → it is seeded from the bundled default and parsed.
-    with patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
-        config = _load_disqualifiers()
-    live = tmp_path / "disqualifiers.yaml"
-    assert live.exists()  # seeded
-    assert "prefilter" in config
-    assert "scoring_modifiers" in config
-    assert all("modifier" in d for d in config["scoring_modifiers"])
-
-
-def test_load_disqualifiers_reads_existing_without_overwrite(tmp_path):
-    live = tmp_path / "disqualifiers.yaml"
-    live.write_text("scoring_modifiers:\n  - name: Custom\n    modifier: -99\n    examples: []\n")
-    with patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)):
-        config = _load_disqualifiers()
-    assert config["scoring_modifiers"][0]["modifier"] == -99  # user copy preserved
+# Loading/seeding of disqualifiers.yaml now lives in harness_db and is covered by
+# harness_db.tests.test_disqualifiers.
 
 
 # ---------------------------------------------------------------------------
