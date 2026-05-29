@@ -63,3 +63,14 @@ This application presents a list of job postings that the harness has
 collected, along with their status. Pressing `Enter` opens an expanded
 window that displays additional details.
 
+### Job Database Web UI
+
+A web app version of the text UI is available in the `./web` directory. One workflow: 
+
+```bash
+; cd ./web
+; ./build-images.sh
+; export JOB_DATA_ROOT=/path/to/job-data
+; docker-compose -f web/docker-compose.yml up --build
+```
+
