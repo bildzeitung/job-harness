@@ -47,6 +47,18 @@ rendercv render "$RESUME_FILE"
 
 Outputs land in `rendercv_output/` as PDF, HTML, Markdown, Typst, and page images.
 
+## Front-ends
+
+Two UIs sit on top of the shared `harness-db` data layer (`harness_db.queries`,
+`harness_db.config`, `harness_db.agent_io`) and stay in sync with the same SQLite DB:
+
+- **TUI** (`tui/`) — Textual app. Run with `job-tui`.
+- **Web** (`web/`) — Reflex app at TUI parity (browse, sort, detail, status
+  changes, and triggering job-scorer/job-preparer with live-streamed output).
+  Dev: `cd web && reflex run`. Docker: `docker compose -f web/docker-compose.yml up --build`
+  (the lean `web` image plus an `agent-runner` image that isolates the `claude`
+  CLI + credentials for in-browser agent runs). See `web/README.md`.
+
 ## Agents
 
 Twelve agents are configured in [.claude/agents/](.claude/agents/):

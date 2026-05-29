@@ -5,4 +5,5 @@ rendercv[full]
 -e ./email-parser[dev]
 -e ./api-search[dev]
 -e ./tui[dev]
+-e ./web[dev]
 linkedin-scraper-mcp

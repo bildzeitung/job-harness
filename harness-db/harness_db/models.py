@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, create_engine, Engine
+from sqlalchemy import (
+    Boolean,
+    Engine,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    event,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# Milliseconds SQLite waits on a locked DB before raising, so concurrent writers
+# (web app, TUI, pipeline) retry instead of failing immediately.
+_BUSY_TIMEOUT_MS = 5000
 
 
 class Base(DeclarativeBase):
@@ -71,5 +86,21 @@ class CompanyPosting(Base):
     __table_args__ = (Index("ix_company_postings_company_name", "company_name"),)
 
 
-def make_engine(db_path: Path) -> Engine :
-    return create_engine(f"sqlite:///{db_path}", echo=False)
+def make_engine(db_path: Path) -> Engine:
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            # busy_timeout retries on locks; harmless on read-only databases.
+            cursor.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
+            # WAL lets readers and a writer coexist. Best-effort: switching journal
+            # mode needs write access, so skip it for a read-only DB rather than fail.
+            cursor.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            cursor.close()
+
+    return engine

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from harness_db.agent_io import REJECTABLE_STATES, build_prepare_prompt, build_score_prompt
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -18,8 +19,6 @@ STATE_STYLES: dict[str, str] = {
     "prepared": "bold magenta",
     "applied": "bold red",
 }
-
-_REJECTABLE_STATES = {"selected", "scored", "new", "prepared"}
 
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
@@ -171,11 +170,7 @@ class JobsPanel(Widget):
         if posting.status != "selected":
             self.app.notify("Only 'selected' jobs can be prepared", severity="warning")
             return
-        prompt = (
-            f"Use the job-preparer agent. A job is already in 'selected' state in the database "
-            f"(URL: {posting.url}). Skip scoring and selection — go straight to running the full "
-            f"pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
-        )
+        prompt = build_prepare_prompt(posting)
         panel = self.query_one("#output-panel", ScorerPanel)
         panel.display = True
         self.app.notify(f"Launching prepare for {posting.company or posting.url}…")
@@ -191,13 +186,7 @@ class JobsPanel(Widget):
                 severity="warning",
             )
             return
-        prompt = (
-            f"Use the job-scorer agent to score a single job posting. "
-            f"The posting URL is: {posting.url}\n"
-            f"Company: {posting.company or 'unknown'}\n"
-            f"Title: {posting.title or 'unknown'}\n"
-            f"Score this one posting only. Write the score to the database and set status to 'scored'."
-        )
+        prompt = build_score_prompt(posting)
         panel = self.query_one("#output-panel", ScorerPanel)
         panel.display = True
         self.app.notify(f"Scoring {posting.display_name}…")
@@ -215,8 +204,8 @@ class JobsPanel(Widget):
     def action_mark_rejected(self) -> None:
         self._update_posting_status(
             "rejected",
-            lambda p: (p.status or "new") in _REJECTABLE_STATES,
-            f"Only {sorted(_REJECTABLE_STATES)} jobs can be rejected",
+            lambda p: (p.status or "new") in REJECTABLE_STATES,
+            f"Only {sorted(REJECTABLE_STATES)} jobs can be rejected",
         )
 
     def _update_posting_status(self, new_status: str, allowed, warn_msg: str) -> None:
