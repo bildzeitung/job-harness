@@ -33,7 +33,9 @@ Agents read this at runtime via `bash -c 'echo $RESUME_FILE'`. This makes the ha
 
 ### Disqualifiers
 
-The pipeline's hard disqualifiers live in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It holds both the pre-filter keyword lists (`prefilter`, used by `job-preparer` to mark postings `skipped` before scoring) and the scoring modifiers (`scoring_modifiers`, applied by the scorer during scoring). Edit this file to tune disqualifier behavior — it is the single source of truth read by `scoring_module`, `job-scorer`, and `job-preparer`. If the file is missing it is seeded from `scoring-module/scoring_module/disqualifiers.default.yaml`.
+The pipeline's hard disqualifiers live in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It holds both the pre-filter keyword lists (`prefilter`) and the scoring modifiers (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer: the platform searchers (and the `api_search` module) drop matching postings at search time so noise never enters the DB, and `job-preparer` re-applies it to mark any survivors `skipped` before scoring. Edit this file to tune disqualifier behavior — it is the single source of truth read by the `job-seeker-*` search agents, `api_search`, `scoring_module`, `job-scorer`, and `job-preparer`. The loader lives in `harness_db.disqualifiers`; if the file is missing it is seeded from `harness-db/harness_db/disqualifiers.default.yaml`.
+
+Positive search inputs (target titles, domains, seniority keywords, work-type/eligibility/employment) are NOT in this file — they come from the generated `candidate-summary.json` (derived from the resume). Exclusions belong here; targets belong there.
 
 **`ANTHROPIC_API_KEY` is not required.** The `scoring_module` Python script authenticates by falling back to the OAuth token in `~/.claude/.credentials.json` (the same session Claude Code uses). If you do have an API key, setting it takes priority.
 

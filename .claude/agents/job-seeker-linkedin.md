@@ -22,32 +22,30 @@ Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory.
 
 Read `$JOB_DATA_ROOT/candidate-summary.json` for the candidate profile — key skills, target titles, seniority keywords, domains, and requirements. Use `seniority_keywords` to drive search queries and filter results.
 
-## Search Requirements (NON-NEGOTIABLE)
+## Search Requirements
 
-Every job you surface MUST satisfy ALL of the following:
-1. **Remote** — fully remote or remote-first (not "hybrid", not "remote in [specific city]")
-2. **Available to Canadians** — open to candidates working in Canada; exclude postings that explicitly require US residency, US work authorization, or state "US only". Do NOT restrict to Canadian companies — remote jobs from US or global companies that allow Canadian remote workers are equally valid.
-3. **Seniority match** — titles from `seniority_keywords` in the candidate summary
-4. **Employment type** — full-time, contract, or freelance; exclude internships and junior roles
+All search inputs come from configuration — nothing here is hard-coded.
 
-Discard any posting that fails criteria 1, 3, or 4. For criterion 2, only discard if there is an explicit Canada/non-US exclusion — when in doubt, keep the posting for the scorer to evaluate.
+**Positive targets** (from `candidate-summary.json`):
+- `requirements.work_type` (e.g. "fully remote") — search broadly for remote roles; do NOT limit to companies in the candidate's country. Remote jobs from any company that allows the candidate's location are equally valid.
+- `requirements.eligibility` (e.g. "Canada-eligible") — the role must not exclude the candidate's location.
+- `requirements.employment` — allowed employment types.
+- `seniority_keywords` — the posting title must match one of these.
+
+**Hard exclusions — early disqualification** (from `$JOB_DATA_ROOT/disqualifiers.yaml`, the single user-editable source of truth shared with `job-preparer` and the scorer): read that file's `prefilter` section and discard any posting that matches, using the same rules `job-preparer` applies (all case-insensitive):
+- `description_phrases` — any phrase appears in the title or description.
+- `title_terms` — any term appears in the title.
+- `title_terms_unless_senior` — any term appears in the title, UNLESS the title also contains a `seniority_exceptions` term.
+
+Discard matches **before** writing them out. Only an explicit `prefilter` match disqualifies — when eligibility is genuinely ambiguous, keep the posting for the scorer to evaluate. Do not invent exclusions beyond the configured lists.
 
 ## Search Strategy
 
-Use `mcp__linkedin__search_jobs` with varied queries to cover the candidate's domains. Search broadly for remote roles — do not limit to Canadian companies. Good query patterns:
+Do not hard-code queries — build them from `candidate-summary.json` so the search follows the candidate's actual profile. Search broadly for remote roles; do not limit to a single country.
+- **Base queries** — one per entry in `target_titles` (append `remote`).
+- **Domain-narrowed queries** — combine target titles (or the core seniority terms) with entries from `domains` to surface niche roles (e.g. `"staff engineer" <domain> remote`).
 
-- `"principal engineer" remote`
-- `"staff engineer" remote cloud`
-- `"cloud architect" remote`
-- `"platform engineer" remote senior`
-- `"principal software engineer" remote`
-- `"distinguished engineer" remote`
-- `"AI infrastructure" remote principal`
-- `"FHIR" OR "healthcare" "principal engineer" remote`
-- `"senior staff engineer" remote`
-- `"ML infrastructure" remote`
-
-Run at least 5–6 queries to get broad coverage. For each result, call `mcp__linkedin__get_job_details` to fetch the full description. Check for any explicit US-only or US work authorization requirement — if present, discard. Otherwise keep it.
+Run enough queries (typically 8–12) to cover that title × domain breadth without redundancy via `mcp__linkedin__search_jobs`. For each result, call `mcp__linkedin__get_job_details` to fetch the full description, then apply the Search Requirements above before including.
 
 Aim for **15–25 unique postings** that pass the filters.
 

@@ -14,13 +14,14 @@ Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory.
 
 Read `$JOB_DATA_ROOT/candidate-summary.json` for the candidate profile — key skills, target titles, seniority keywords, domains, and requirements. Use `seniority_keywords` to drive search queries and filter results.
 
-## Search Requirements (NON-NEGOTIABLE)
+## Search Requirements
 
-Every job you surface MUST satisfy ALL of the following:
-1. **Remote** — fully remote or remote-first
-2. **Canada-eligible** — this is the Canada Adzuna endpoint; exclude explicit "US only" or "US citizens only" postings
-3. **Seniority match** — titles matching `seniority_keywords` from the candidate summary
-4. **Employment type** — full-time, contract, or freelance; exclude internships and junior roles
+The `api_search` module enforces all of these for you, fully driven by configuration — nothing is hard-coded:
+- **Queries** are built from `candidate-summary.json` `target_titles` (one per title).
+- **Positive filters** — remote, plus a seniority match against `seniority_keywords`.
+- **Hard exclusions** come from `$JOB_DATA_ROOT/disqualifiers.yaml` `prefilter` (the single source of truth shared with `job-preparer` and the scorer): postings matching `description_phrases`, `title_terms`, or `title_terms_unless_senior` are dropped. The Canada Adzuna endpoint also establishes Canada eligibility at the source.
+
+You do not implement any of this filtering yourself — just run the module.
 
 ## Running the Search
 
