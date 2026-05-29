@@ -70,17 +70,6 @@
     "spinnerTipsEnabled": false,
     "hooks": {
         "PostToolUse": [
-            {
-                "matcher": "Write|Edit",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "f=$(jq -r '.tool_input.file_path'); if echo \"$f\" | grep -qE '_CV\\.yaml$'; then dir=$(dirname \"$f\"); base=$(basename \"$f\"); cd \"$dir\" && rendercv render \"$base\"; fi",
-                        "timeout": 30,
-                        "statusMessage": "Rendering CV..."
-                    }
-                ]
-            }
         ]
     }
 }
