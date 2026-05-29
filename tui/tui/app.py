@@ -43,7 +43,7 @@ class JobViewerApp(App):
             return
 
         self.query_one(JobsPanel).load(self._engine, postings)
-        self.query_one(CompanyPanel).load(companies)
+        self.query_one(CompanyPanel).load(self._engine, companies)
         self._refresh_titles()
         self.query_one(JobsPanel).focus_table()
 
@@ -60,7 +60,7 @@ class JobViewerApp(App):
         except Exception as e:
             self.notify(f"Refresh failed: {e}", severity="error")
             return
-        self.query_one(CompanyPanel).load(companies)
+        self.query_one(CompanyPanel).load(self._engine, companies)
         self._refresh_titles()
 
     def action_switch_tab(self) -> None:

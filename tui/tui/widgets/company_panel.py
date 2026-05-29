@@ -5,6 +5,12 @@ from textual.containers import ScrollableContainer, Vertical
 from textual.widget import Widget
 from textual.widgets import DataTable, Static
 
+from tui.db import get_company_postings
+
+# Cap the per-company job list in the detail popup so a prolific employer
+# doesn't blow up the panel; the rest are summarized as "… and N more".
+_MAX_LISTED_POSTINGS = 25
+
 
 def _bool_glyph(value: bool | None) -> str:
     if value is True:
@@ -19,6 +25,7 @@ class CompanyPanel(Widget):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
+        self._engine = None
         self._companies: list = []
         self._details_visible = False
 
@@ -31,7 +38,8 @@ class CompanyPanel(Widget):
     def on_mount(self) -> None:
         self.query_one("#company-details-panel").display = False
 
-    def load(self, companies: list) -> None:
+    def load(self, engine, companies: list) -> None:
+        self._engine = engine
         self._companies = companies
         table = self.query_one("#companies-table", DataTable)
         table.clear(columns=True)
@@ -100,4 +108,20 @@ class CompanyPanel(Widget):
             lines.extend(["", "Notes:", company.notes])
         if company.fetch_notes:
             lines.extend(["", "Fetch notes:", company.fetch_notes])
+        lines.extend(self._listing_lines(company))
         return "\n".join(lines)
+
+    def _listing_lines(self, company) -> list[str]:
+        if self._engine is None or not company.name:
+            return []
+        postings = get_company_postings(self._engine, company.name)
+        if not postings:
+            return ["", "Job listings: none"]
+        lines = ["", f"Job listings ({len(postings)}):"]
+        for p in postings[:_MAX_LISTED_POSTINGS]:
+            score = p.final_score if p.final_score is not None else "—"
+            status = p.status or "new"
+            lines.append(f"  [{score:>3}] {status:<9} {p.title or p.url}")
+        if len(postings) > _MAX_LISTED_POSTINGS:
+            lines.append(f"  … and {len(postings) - _MAX_LISTED_POSTINGS} more")
+        return lines
