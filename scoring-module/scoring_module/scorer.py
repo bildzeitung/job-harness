@@ -15,6 +15,7 @@ import anthropic
 import httpx
 import yaml
 from harness_db.models import Posting, make_engine
+from harness_db.profile import load_candidate_summary
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
@@ -83,13 +84,7 @@ def _format_candidate_profile(profile: dict[str, Any]) -> str:
 
 
 def _load_system_prompt() -> str:
-    if not JOB_DATA_ROOT:
-        raise RuntimeError(
-            "JOB_DATA_ROOT not set — needed to read candidate-summary.json. "
-            "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
-        )
-    with open(Path(JOB_DATA_ROOT) / "candidate-summary.json") as f:
-        profile = json.load(f)
+    profile = load_candidate_summary()
     template = (Path(__file__).parent / "system_prompt.txt").read_text()
     template = template.replace("{{CANDIDATE_PROFILE}}", _format_candidate_profile(profile))
     return template.replace("{{DISQUALIFIERS}}", _render_disqualifiers(_load_disqualifiers()))

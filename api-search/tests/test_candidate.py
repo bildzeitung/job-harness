@@ -22,8 +22,10 @@ def _write_summary(tmp_path: Path, data: dict = SUMMARY) -> Path:
     return tmp_path
 
 
-def test_load_raises_when_env_unset(monkeypatch):
+def test_load_raises_when_env_unset(monkeypatch, tmp_path):
     monkeypatch.delenv("JOB_DATA_ROOT", raising=False)
+    # chdir to a dir with no .git so the settings.local.json fallback finds nothing.
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(RuntimeError, match="JOB_DATA_ROOT"):
         load_candidate_summary()
 

@@ -1,22 +1,19 @@
-"""Load the candidate profile and derive search inputs from it."""
+"""Derive search inputs from the candidate profile.
+
+The profile loader itself lives in :mod:`harness_db.profile` so every pipeline
+module shares one implementation; it is re-exported here so existing
+``api_search.candidate`` imports keep working unchanged.
+"""
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
+from harness_db.profile import load_candidate_summary
 
-
-def load_candidate_summary() -> dict:
-    """Read `$JOB_DATA_ROOT/candidate-summary.json` (written by the job-seeker)."""
-    job_data_root = os.environ.get("JOB_DATA_ROOT")
-    if not job_data_root:
-        raise RuntimeError("JOB_DATA_ROOT is not set")
-    path = Path(job_data_root) / "candidate-summary.json"
-    if not path.exists():
-        raise FileNotFoundError(f"candidate-summary.json not found at {path}")
-    with open(path) as f:
-        return json.load(f)
+__all__ = [
+    "load_candidate_summary",
+    "queries_from_summary",
+    "seniority_keywords_from_summary",
+]
 
 
 def queries_from_summary(summary: dict) -> list[str]:
