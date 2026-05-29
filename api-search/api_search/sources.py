@@ -15,11 +15,12 @@ import html
 import os
 import re
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 import httpx
 import yaml
@@ -29,6 +30,13 @@ from api_search.candidate import queries_from_summary
 ADZUNA_URL = "https://api.adzuna.com/v1/api/jobs/ca/search/1"
 GREENHOUSE_BOARD = "https://boards-api.greenhouse.io/v1/boards/{slug}"
 LEVER_POSTINGS = "https://api.lever.co/v0/postings/{slug}"
+
+# Cap on concurrent HTTP fetches within a single source (Adzuna queries, or
+# Greenhouse/Lever boards). httpx.Client is thread-safe, so each work item
+# (one query or one slug) runs on its own thread up to this many at a time.
+MAX_FETCH_WORKERS = 8
+
+_T = TypeVar("_T")
 
 _CONFIG_PATH = Path(__file__).with_name("sources_default.yaml")
 
@@ -78,6 +86,26 @@ def _epoch_ms_to_date(ms: Any) -> str | None:
         return None
 
 
+# ── parallel fan-out ────────────────────────────────────────────────────────
+
+
+def _fetch_in_parallel(
+    work_items: list[_T],
+    worker: Callable[[_T], list[dict[str, Any]]],
+) -> Iterator[dict[str, Any]]:
+    """Run `worker` over `work_items` concurrently, yielding each item's records.
+
+    Each `worker` handles its own errors and returns a (possibly empty) list, so
+    one slow or failing query/board never blocks or aborts the others. Results
+    are yielded in `work_items` order, keeping output stable and deterministic.
+    """
+    if not work_items:
+        return
+    with ThreadPoolExecutor(max_workers=min(MAX_FETCH_WORKERS, len(work_items))) as pool:
+        for records in pool.map(worker, work_items):
+            yield from records
+
+
 # ── fetch generators ──────────────────────────────────────────────────────────
 
 
@@ -86,7 +114,7 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
     app_id = os.environ["ADZUNA_APP_ID"]
     app_key = os.environ["ADZUNA_API_KEY"]
 
-    for q in queries_from_summary(summary):
+    def _fetch_query(q: str) -> list[dict[str, Any]]:
         try:
             resp = client.get(
                 ADZUNA_URL,
@@ -102,10 +130,10 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
             data = resp.json()
         except Exception as e:
             print(f'[ADZUNA] Query "{q}" failed: {e}', flush=True)
-            continue
+            return []
 
-        for job in data.get("results", []):
-            yield {
+        return [
+            {
                 "title": job.get("title", ""),
                 "company": job.get("company", {}).get("display_name", ""),
                 "url": job.get("redirect_url", ""),
@@ -113,11 +141,16 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
                 "location": "",
                 "description": job.get("description", "") or "",
             }
+            for job in data.get("results", [])
+        ]
+
+    yield from _fetch_in_parallel(queries_from_summary(summary), _fetch_query)
 
 
 def fetch_greenhouse(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
     """Pull every job from each configured Greenhouse board (content included)."""
-    for slug in cfg.get("slugs", []):
+
+    def _fetch_board(slug: str) -> list[dict[str, Any]]:
         try:
             meta = client.get(GREENHOUSE_BOARD.format(slug=slug))
             meta.raise_for_status()
@@ -133,42 +166,55 @@ def fetch_greenhouse(client: httpx.Client, summary: dict, cfg: dict) -> Iterator
             jobs = resp.json().get("jobs", [])
         except Exception as e:
             print(f"[GREENHOUSE] Board '{slug}' failed: {e}", flush=True)
-            continue
+            return []
 
+        records = []
         for job in jobs:
             location = (job.get("location") or {}).get("name", "") or ""
-            yield {
-                "title": job.get("title", ""),
-                "company": company,
-                "url": job.get("absolute_url", ""),
-                "post_date": (job.get("updated_at") or "")[:10],
-                "location": location,
-                "description": _strip_html(job.get("content", "")),
-            }
+            records.append(
+                {
+                    "title": job.get("title", ""),
+                    "company": company,
+                    "url": job.get("absolute_url", ""),
+                    "post_date": (job.get("updated_at") or "")[:10],
+                    "location": location,
+                    "description": _strip_html(job.get("content", "")),
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(cfg.get("slugs", []), _fetch_board)
 
 
 def fetch_lever(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
     """Pull every posting from each configured Lever board."""
-    for slug in cfg.get("slugs", []):
+
+    def _fetch_board(slug: str) -> list[dict[str, Any]]:
         try:
             resp = client.get(LEVER_POSTINGS.format(slug=slug), params={"mode": "json"})
             resp.raise_for_status()
             postings = resp.json()
         except Exception as e:
             print(f"[LEVER] Board '{slug}' failed: {e}", flush=True)
-            continue
+            return []
 
+        records = []
         for p in postings:
             cats = p.get("categories", {}) or {}
             description = p.get("descriptionPlain") or _strip_html(p.get("description", ""))
-            yield {
-                "title": p.get("text", ""),
-                "company": _slug_to_name(slug),
-                "url": p.get("hostedUrl", ""),
-                "post_date": _epoch_ms_to_date(p.get("createdAt")),
-                "location": cats.get("location", "") or "",
-                "description": description,
-            }
+            records.append(
+                {
+                    "title": p.get("text", ""),
+                    "company": _slug_to_name(slug),
+                    "url": p.get("hostedUrl", ""),
+                    "post_date": _epoch_ms_to_date(p.get("createdAt")),
+                    "location": cats.get("location", "") or "",
+                    "description": description,
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(cfg.get("slugs", []), _fetch_board)
 
 
 SOURCES: dict[str, Source] = {
