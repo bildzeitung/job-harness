@@ -1,10 +1,12 @@
-"""Shared posting filters — applied uniformly to every source's results."""
+"""Shared posting filters — applied uniformly to every source's results.
+
+Positive match filters (remote, seniority) live here. Hard exclusions are NOT
+hard-coded: they come from the user-editable ``disqualifiers.yaml`` prefilter via
+:func:`harness_db.disqualifiers.prefilter_disqualifies`, the single source of
+truth shared with ``job-preparer`` and the scorer.
+"""
 
 from __future__ import annotations
-
-JUNIOR_KEYWORDS = ["junior", "intern", "entry level", "entry-level"]
-
-EXCLUDE_PHRASES = ["us only", "us citizens only", "must be located in us"]
 
 
 def is_remote(text: str) -> bool:
@@ -14,13 +16,3 @@ def is_remote(text: str) -> bool:
 def is_senior(title: str, seniority_keywords: list[str]) -> bool:
     t = title.lower()
     return any(kw in t for kw in seniority_keywords)
-
-
-def is_junior(title: str) -> bool:
-    t = title.lower()
-    return any(kw in t for kw in JUNIOR_KEYWORDS)
-
-
-def is_canada_eligible(text: str) -> bool:
-    t = text.lower()
-    return not any(phrase in t for phrase in EXCLUDE_PHRASES)

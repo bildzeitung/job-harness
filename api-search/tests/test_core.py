@@ -67,12 +67,14 @@ def test_run_filters_non_senior(env, monkeypatch):
     assert run("adzuna") == []
 
 
-def test_run_filters_junior(env, monkeypatch):
-    _patch_adzuna(monkeypatch, [_adzuna_job(title="Junior Principal")])
+def test_run_filters_via_prefilter_title_term(env, monkeypatch):
+    # "internship" is a disqualifiers.yaml prefilter title_term — dropped even
+    # though the title also matches a seniority keyword.
+    _patch_adzuna(monkeypatch, [_adzuna_job(title="Principal Engineer Internship")])
     assert run("adzuna") == []
 
 
-def test_run_filters_us_only(env, monkeypatch):
+def test_run_filters_via_prefilter_description_phrase(env, monkeypatch):
     _patch_adzuna(monkeypatch, [_adzuna_job(desc="Remote. US citizens only.")])
     assert run("adzuna") == []
 

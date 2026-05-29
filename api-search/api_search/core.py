@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from harness_db.disqualifiers import load_prefilter, prefilter_disqualifies
 
 from api_search.candidate import load_candidate_summary, seniority_keywords_from_summary
-from api_search.filters import is_canada_eligible, is_junior, is_remote, is_senior
+from api_search.filters import is_remote, is_senior
 from api_search.sources import SOURCES, load_config
 
 DESCRIPTION_SUMMARY_LEN = 300
@@ -29,6 +30,7 @@ def run(source_name: str, timeout: int = 20) -> list[dict[str, Any]]:
     src = SOURCES[source_name]
     summary = load_candidate_summary()
     seniority = seniority_keywords_from_summary(summary)
+    prefilter = load_prefilter()
     cfg = load_config().get(source_name, {})
 
     seen: set[str] = set()
@@ -49,9 +51,7 @@ def run(source_name: str, timeout: int = 20) -> list[dict[str, Any]]:
                 continue
             if not is_senior(title, seniority):
                 continue
-            if is_junior(title):
-                continue
-            if not is_canada_eligible(combined):
+            if prefilter_disqualifies(title, combined, prefilter):
                 continue
 
             seen.add(url)
