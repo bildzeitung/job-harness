@@ -109,4 +109,6 @@ After saving, print: `[INDEED] Found {N} postings — saved to {path}`
   - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
 - If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
 
+- **Extraction candidate**: Did you write or run any **ad-hoc Python** to get the task done — a `python -c` one-liner, a heredoc piped to `python`, or a throwaway script in `/tmp`? That is a signal the behavior should become a real, tested module instead of being re-generated each run. If so, output an `<extraction_candidate>` block naming what the script did and the reusable behavior worth extracting. If not, output `<extraction_candidate>NONE</extraction_candidate>`.
+
 Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.
