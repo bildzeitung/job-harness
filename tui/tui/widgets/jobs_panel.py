@@ -20,9 +20,12 @@ STATE_STYLES: dict[str, str] = {
     "applied": "bold red",
 }
 
+_SCORE_WIDTH = 7
 _DATE_WIDTH = 12
 _STATE_WIDTH = 10
 _COL_PADDING = 6  # borders, scrollbar, gutters
+_FIXED_COLS_WIDTH = _SCORE_WIDTH + _DATE_WIDTH + _STATE_WIDTH + _COL_PADDING
+_MIN_JOB_WIDTH = 20
 
 _SORT_MODES = ["state", "date", "title"]
 _SORT_INDICATOR = "▼"
@@ -48,6 +51,7 @@ class JobsPanel(Widget):
         self._postings: list = []
         self._sort_by = "state"
         self._details_visible = False
+        self._score_col_key = None
         self._job_col_key = None
         self._date_col_key = None
         self._state_col_key = None
@@ -98,11 +102,22 @@ class JobsPanel(Widget):
             return f"{label} {_SORT_INDICATOR}"
         return label
 
+    def _job_width(self) -> int:
+        return max(_MIN_JOB_WIDTH, self.size.width - _FIXED_COLS_WIDTH)
+
+    @staticmethod
+    def _score_cell(posting) -> Text:
+        if posting.final_score is None:
+            return Text("—", style="dim", justify="right")
+        return Text(str(posting.final_score), justify="right")
+
     def _init_table(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
         table.clear(columns=True)
-        job_width = max(20, self.size.width - _DATE_WIDTH - _STATE_WIDTH - _COL_PADDING)
-        self._job_col_key = table.add_column(self._col_label("Job", "title"), width=job_width)
+        self._score_col_key = table.add_column("Score", width=_SCORE_WIDTH)
+        self._job_col_key = table.add_column(
+            self._col_label("Job", "title"), width=self._job_width()
+        )
         self._date_col_key = table.add_column(self._col_label("Date", "date"), width=_DATE_WIDTH)
         self._state_col_key = table.add_column(
             self._col_label("State", "state"), width=_STATE_WIDTH
@@ -111,6 +126,7 @@ class JobsPanel(Widget):
         for posting in self._postings:
             status = posting.status or "new"
             table.add_row(
+                self._score_cell(posting),
                 posting.display_name,
                 posting.display_date,
                 Text(status, style=STATE_STYLES.get(status, "white")),
@@ -121,8 +137,7 @@ class JobsPanel(Widget):
         if self._job_col_key is None:
             return
         table = self.query_one("#jobs-table", DataTable)
-        job_width = max(20, self.size.width - _DATE_WIDTH - _STATE_WIDTH - _COL_PADDING)
-        table.columns[self._job_col_key].width = job_width
+        table.columns[self._job_col_key].width = self._job_width()
         table.refresh()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
