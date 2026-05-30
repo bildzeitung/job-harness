@@ -10,6 +10,10 @@ Before editing, creating, or deleting a single file, you MUST first create/enter
 
 If you find yourself about to run `Edit`, `Write`, or any mutating command while on `main`: **STOP.** Create the worktree first, then do the work there. Editing on `main` is a mistake even if the task seems small, even if the user didn't repeat the instruction, and even if you're "just fixing one thing." When in doubt, confirm you are NOT on `main` before your first write.
 
+### Exception: the harness data root is always writable
+
+The worktree rule above applies **only to files inside this repository**. Any harness agent — `job-preparer`, `job-pipeline-worker`, `resume-tailor`, `cover-letter-creator`, and the `job-seeker-*` searchers — is **fully permitted to Read, Write, and Edit anything under `$JOB_DATA_ROOT/**`** (job data, scoring reports, and the prepared resume/cover-letter outputs in `$JOB_DATA_ROOT/output/`). `$JOB_DATA_ROOT` lives **outside** the repository, so it is never on `main` and never needs a worktree. When you are told to write a pipeline artifact to a path under `$JOB_DATA_ROOT` (e.g. an `output_dir`), write it directly — do not stop, do not create a worktree, and do not fall back to `./applications/` inside the repo.
+
 ## What This Is
 
 A [RenderCV](https://github.com/rendercv/rendercv)-based resume project. The source of truth is the CV YAML file, validated against the RenderCV v2.8 JSON schema. All outputs (`rendercv_output/`) are generated artifacts — never edit them directly.
@@ -79,8 +83,8 @@ Twelve agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
 - **job-scorer** — Scores a single job posting 1–100 against the CV. Saves reports to `job-data/jobs/reports/`.
-- **job-preparer** — Team lead: scores all postings, presents top 5 (min score 75) to the user for selection, creates an agent team, assigns one task per selected job, monitors workers, tears down the team when done. Writes a final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`.
-- **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF → cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.
+- **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-5; `phase: prepare` (given the user-selected URLs) runs the resume team and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) runs a cover-letter pass and updates the report. Cover letters are off by default.
+- **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF, and — only when the task opts in (cover letters are off by default) — cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.
 
 CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `model: opus`. Pipeline agents use `model: sonnet`.
 
@@ -102,7 +106,7 @@ CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `mod
 
 **Full job search run:**
 1. Spawn `job-seeker` — searches LinkedIn + Indeed + Adzuna + ZipRecruiter + Greenhouse/Lever + non-job-board research in parallel, finds 50–90 fresh postings, inserts into SQLite DB, saves audit log to `job-data/jobs/`
-2. Spawn `job-preparer` — queries the SQLite DB directly (no file argument), scores, ranks, presents top 5 (min score 75) to the user for selection, then prepares tailored resume + cover letter PDFs for user-selected jobs; writes `job-data/output/YYYY-MM-DD/final-report.md` with full URLs
+2. Run the preparation phases via `job-preparer` (driven by the `job-search` skill, which owns all user prompts since the subagent cannot): score & rank → user picks jobs → prepare tailored resume PDFs + `job-data/output/YYYY-MM-DD/final-report.md` with full URLs → ask whether to also generate cover letters (off by default) → optional cover-letter pass
 
 ## CV Structure
 
