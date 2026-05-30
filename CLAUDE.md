@@ -10,6 +10,10 @@ Before editing, creating, or deleting a single file, you MUST first create/enter
 
 If you find yourself about to run `Edit`, `Write`, or any mutating command while on `main`: **STOP.** Create the worktree first, then do the work there. Editing on `main` is a mistake even if the task seems small, even if the user didn't repeat the instruction, and even if you're "just fixing one thing." When in doubt, confirm you are NOT on `main` before your first write.
 
+### Exception: the harness data root is always writable
+
+The worktree rule above applies **only to files inside this repository**. Any harness agent — `job-preparer`, `job-pipeline-worker`, `resume-tailor`, `cover-letter-creator`, and the `job-seeker-*` searchers — is **fully permitted to Read, Write, and Edit anything under `$JOB_DATA_ROOT/**`** (job data, scoring reports, and the prepared resume/cover-letter outputs in `$JOB_DATA_ROOT/output/`). `$JOB_DATA_ROOT` lives **outside** the repository, so it is never on `main` and never needs a worktree. When you are told to write a pipeline artifact to a path under `$JOB_DATA_ROOT` (e.g. an `output_dir`), write it directly — do not stop, do not create a worktree, and do not fall back to `./applications/` inside the repo.
+
 ## What This Is
 
 A [RenderCV](https://github.com/rendercv/rendercv)-based resume project. The source of truth is the CV YAML file, validated against the RenderCV v2.8 JSON schema. All outputs (`rendercv_output/`) are generated artifacts — never edit them directly.
