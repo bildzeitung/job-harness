@@ -13,6 +13,7 @@ from typing import Any
 
 import anthropic
 import httpx
+from harness_db.config import get_db_path
 from harness_db.disqualifiers import load_disqualifiers
 from harness_db.models import Posting, make_engine
 from harness_db.profile import load_candidate_summary
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 
 TODAY = date.today().isoformat()
 
+# Optional override; when unset we fall back to the canonical
+# JOB_DATA_ROOT/jobs/postings.db resolved by harness_db.config.get_db_path().
 DB_PATH = os.environ.get("SQLITE_DB_PATH")
 JOB_DATA_ROOT = os.environ.get("JOB_DATA_ROOT", "")
 MAX_BATCH_WORKERS = 5
@@ -291,18 +294,16 @@ def score_batch(batch_file: str) -> int:
             "JOB_DATA_ROOT not set — cannot save reports; aborting. "
             "Add it to .claude/settings.local.json under env.JOB_DATA_ROOT."
         )
-    if not DB_PATH:
-        raise RuntimeError(
-            "SQLITE_DB_PATH not set — cannot save scores to database; aborting. "
-            "Add it to .claude/settings.local.json under env.SQLITE_DB_PATH."
-        )
+    # SQLITE_DB_PATH is an optional override; otherwise resolve the canonical
+    # JOB_DATA_ROOT/jobs/postings.db the same way every other front-end does.
+    db_path = Path(DB_PATH) if DB_PATH else get_db_path()
 
     with open(batch_file) as f:
         postings = json.load(f)
 
     reports_dir = Path(JOB_DATA_ROOT) / "jobs" / "reports"
     client = _make_client()
-    engine = make_engine(Path(DB_PATH))
+    engine = make_engine(db_path)
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
         result = _score_one(client, posting)
