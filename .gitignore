@@ -1,6 +1,7 @@
 # HARNESS
 job-data/
 .claude/worktrees
+specs/extraction-backlog.jsonl
 
 # Python
 __pycache__/
