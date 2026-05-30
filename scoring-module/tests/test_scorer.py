@@ -386,6 +386,50 @@ def test_score_batch_scores_and_updates_db(tmp_path):
     assert row[3] == "Good fit"
 
 
+def test_score_batch_falls_back_to_canonical_db_path(tmp_path):
+    """With SQLITE_DB_PATH unset (DB_PATH None), the scorer resolves the
+    canonical JOB_DATA_ROOT/jobs/postings.db via harness_db.config.get_db_path()."""
+    postings = [
+        {
+            "url": "https://example.com/job/1",
+            "title": "Principal Engineer",
+            "company": "Acme Corp",
+            "platform": "linkedin",
+            "post_date": None,
+            "applicant_count": None,
+            "description_summary": "A role",
+            "job_description_text": "x" * 600,
+        }
+    ]
+    batch_file = tmp_path / "batch.json"
+    batch_file.write_text(json.dumps(postings))
+
+    db_path = tmp_path / "jobs" / "postings.db"
+    db_path.parent.mkdir(parents=True)
+    _make_db(db_path)
+    _insert_posting(db_path, "https://example.com/job/1", "Acme Corp", "Principal Engineer")
+
+    client = _api_response(base_score=78)
+
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
+        patch("scoring_module.scorer.DB_PATH", None),
+        patch("scoring_module.scorer.get_db_path", return_value=db_path),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+    ):
+        count = score_batch(str(batch_file))
+
+    assert count == 1
+
+    conn = sqlite3.connect(str(db_path))
+    status = conn.execute(
+        "SELECT status FROM postings WHERE url = ?",
+        ("https://example.com/job/1",),
+    ).fetchone()[0]
+    conn.close()
+    assert status == "scored"
+
+
 def test_score_batch_writes_report_file(tmp_path):
     postings = [
         {
