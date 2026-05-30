@@ -34,10 +34,28 @@ Run `bash -c 'echo $JOB_DATA_ROOT'` to get the data directory. Write `$JOB_DATA_
 
 Replace the array with the actual `enabled_sources` list.
 
-## Steps 1–3
+## Steps 1–5
 
-1. Spawn the `job-seeker` agent (subagent_type: job-seeker). It reads `sources-config.json` to know which sources are active, searches those sources in parallel for remote, Canada-eligible senior roles, deduplicates against the SQLite DB, inserts new postings, and saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`. Wait for it to complete.
+> **`job-preparer` cannot prompt the user** — it runs as a subagent and its questions do not surface. **You** (the main agent running this skill) own every user decision. `job-preparer` runs in phases and returns control to you between them. Ask the user in **plain text** (no `AskUserQuestion`), matching the Step 0 style above.
 
-2. Spawn the `job-preparer` agent (subagent_type: job-preparer). It queries the SQLite DB directly for new postings — no file argument needed. It will score every posting in parallel, present the top 5 (min score 75) to the user for selection, then produce a tailored resume and PDF for each user-selected job under `job-data/output/YYYY-MM-DD/`. After writing the final report it asks once whether to generate cover letters (off by default); if the user opts in it runs a follow-up cover-letter pass. Wait for it to complete.
+1. **Search.** Spawn the `job-seeker` agent (subagent_type: job-seeker). It reads `sources-config.json` to know which sources are active, searches those sources in parallel for remote, Canada-eligible senior roles, deduplicates against the SQLite DB, inserts new postings, and saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`. Wait for it to complete.
 
-3. Report the final summary table that `job-preparer` produces, including rank, company, title, score, and status for each prepared application.
+2. **Score & rank.** Spawn `job-preparer` with `phase: score`. It scores every new/stale posting in parallel and returns a ranked top-5 table that includes each job's URL. Wait for it to complete.
+
+3. **Ask which jobs to prepare.** Present the ranked table to the user (you may drop the URL column for readability). Then ask, in plain text:
+
+   > Reply with the rank numbers of the jobs to prepare (e.g. `1 3` or `1, 2, 4`), or `none` to stop.
+
+   Wait for the reply. Parse space/comma-separated integers; map each rank back to its URL using the table from step 2. If the reply is `none` or contains no valid ranks, stop here — the run is complete.
+
+4. **Prepare resumes.** Spawn `job-preparer` with `phase: prepare` and `selected_urls: [<the chosen URLs>]`. It marks them selected, prepares a tailored resume + PDF for each under `job-data/output/YYYY-MM-DD/`, writes `final-report.md` (cover letters shown as "not generated"), and returns a `prepared_jobs` handoff (company, url, output_dir, resume_yaml_path per job). Wait for it to complete.
+
+5. **Offer cover letters, then optionally generate them.** Cover letters are **off by default**. Ask the user, in plain text:
+
+   > Resumes are prepared and the final report is written. Generate cover letters too? Reply `yes` to generate them (or name specific companies), or `no` to finish.
+
+   Wait for the reply.
+   - If `no` / empty / no clear affirmative: stop — report the summary from step 4.
+   - If affirmative: spawn `job-preparer` with `phase: cover-letters` and `prepared_jobs: [<the handoff from step 4, filtered to any companies the user named>]`. It generates the cover letters, updates `final-report.md`, and returns a summary. Wait for it to complete.
+
+Finally, report the summary table (rank, company, title, score, status) including whether cover letters were generated, and the path to `final-report.md`.

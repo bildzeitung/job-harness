@@ -12,6 +12,10 @@ Steps:
 
 2. **Spawn the `job-seeker-email` agent** (subagent_type: job-seeker-email). It will read the most recent LinkedIn job alert email from Gmail, extract job postings, label the email with `AI`, save results to `job-data/jobs/email-{YYYY-MM-DD}.json`, and insert new postings into the SQLite DB. Wait for it to complete.
 
-3. **Spawn the `job-preparer` agent** (subagent_type: job-preparer). It queries the SQLite DB directly for new postings — no file argument needed. It will score every posting, select the top 5 (min score 75), then produce a tailored resume and PDF for each selected job under `job-data/output/YYYY-MM-DD/`. After writing the final report it asks once whether to generate cover letters (off by default); if the user opts in it runs a follow-up cover-letter pass. Wait for it to complete.
+3. **Prepare via `job-preparer`, in phases.** `job-preparer` cannot prompt the user (it runs as a subagent and its questions do not surface), so **you** own every user decision — ask in **plain text**, never `AskUserQuestion`. Run the same phased flow as the `job-search` skill:
+   - Spawn `job-preparer` with `phase: score`; it returns a ranked top-5 table with URLs.
+   - Present the table and ask the user which rank numbers to prepare (or `none`); map ranks → URLs. Stop if `none`.
+   - Spawn `job-preparer` with `phase: prepare` and `selected_urls`; it prepares resumes + PDFs under `job-data/output/YYYY-MM-DD/`, writes `final-report.md`, and returns a `prepared_jobs` handoff.
+   - Ask whether to generate cover letters (off by default). If the user opts in, spawn `job-preparer` with `phase: cover-letters` and `prepared_jobs`; it generates the cover letters and updates the report.
 
-4. **Report** the final summary table that `job-preparer` produces, including rank, company, title, score, and status for each prepared application.
+4. **Report** the final summary table (rank, company, title, score, status, and whether cover letters were generated), plus the path to `final-report.md`.

@@ -83,7 +83,7 @@ Twelve agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
 - **job-scorer** — Scores a single job posting 1–100 against the CV. Saves reports to `job-data/jobs/reports/`.
-- **job-preparer** — Team lead: scores all postings, presents top 5 (min score 75) to the user for selection, creates an agent team, assigns one resume task per selected job, monitors workers, tears down the team when done, writes a final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`, then asks once whether to generate cover letters (off by default) and runs a follow-up cover-letter pass if the user opts in.
+- **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-5; `phase: prepare` (given the user-selected URLs) runs the resume team and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) runs a cover-letter pass and updates the report. Cover letters are off by default.
 - **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF, and — only when the task opts in (cover letters are off by default) — cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.
 
 CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `model: opus`. Pipeline agents use `model: sonnet`.
@@ -106,7 +106,7 @@ CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `mod
 
 **Full job search run:**
 1. Spawn `job-seeker` — searches LinkedIn + Indeed + Adzuna + ZipRecruiter + Greenhouse/Lever + non-job-board research in parallel, finds 50–90 fresh postings, inserts into SQLite DB, saves audit log to `job-data/jobs/`
-2. Spawn `job-preparer` — queries the SQLite DB directly (no file argument), scores, ranks, presents top 5 (min score 75) to the user for selection, prepares tailored resume PDFs for user-selected jobs, writes `job-data/output/YYYY-MM-DD/final-report.md` with full URLs, then asks once whether to also generate cover letters (off by default; generated in a follow-up pass if the user opts in)
+2. Run the preparation phases via `job-preparer` (driven by the `job-search` skill, which owns all user prompts since the subagent cannot): score & rank → user picks jobs → prepare tailored resume PDFs + `job-data/output/YYYY-MM-DD/final-report.md` with full URLs → ask whether to also generate cover letters (off by default) → optional cover-letter pass
 
 ## CV Structure
 
