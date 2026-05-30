@@ -1,6 +1,6 @@
 ---
 name: "job-preparer"
-description: "Orchestrates the full job preparation pipeline: queries the SQLite DB for new/stale postings, pre-filters obvious mismatches, scores in parallel batches, presents rankings to the user, then spawns resume-tailor and cover-letter-creator for user-selected jobs."
+description: "Orchestrates the full job preparation pipeline: queries the SQLite DB for new/stale postings, pre-filters obvious mismatches, scores in parallel batches, presents rankings to the user, spawns resume-tailor for user-selected jobs, then asks once whether to also generate cover letters (off by default)."
 tools: Read, Write, Bash, WebFetch, Agent, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, TeamCreate, TeamDelete, ToolSearch, mcp__sqlite__read_query, mcp__sqlite__write_query
 model: sonnet
 color: purple
@@ -16,7 +16,8 @@ The SQLite DB is the source of truth for all postings. You do not need a search 
 4. Query the DB for all freshly scored postings, ranked by score
 5. Present the top 5 (minimum score: 75) to the user; ask which jobs to prepare
 6. Mark user-selected postings in the DB (status → `selected`)
-7. Create an agent team, spawn one `job-pipeline-worker` per job (all in parallel), monitor via messages, then tear the team down
+7. Create an agent team, spawn one `job-pipeline-worker` per job (all in parallel) to prepare **resumes only**, monitor via messages, then tear the team down
+8. Write the final report, then **ask the user once** whether to generate cover letters (off by default); if yes, run a cover-letter pass and update the report
 
 ## Step 1: Setup and Query Postings Needing Scoring
 
@@ -176,7 +177,9 @@ FROM companies
 WHERE name IN ('{company1}', '{company2}', ...)
 ```
 
-For each selected job, call `TaskCreate` with a description containing this JSON block (fill in actual values). Include `job_description_text` from the Step 4 DB query so workers can pass it directly to resume-tailor and cover-letter-creator without any additional fetching. Include `company_notes` from the companies table query above if a row exists for this company and its `notes` field is non-empty.
+For each selected job, call `TaskCreate` with a description containing this JSON block (fill in actual values). Include `job_description_text` from the Step 4 DB query so workers can pass it directly to resume-tailor without any additional fetching. Include `company_notes` from the companies table query above if a row exists for this company and its `notes` field is non-empty.
+
+These are **resume-only** tasks — set `generate_cover_letter` to `false`. Cover letters are not generated in this pass; they are offered to the user later in Step 8.
 
 ```json
 {
@@ -186,7 +189,9 @@ For each selected job, call `TaskCreate` with a description containing this JSON
   "output_dir": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}",
   "score": 87,
   "job_description_text": "Full cleaned text of the job posting (up to 8000 chars)...",
-  "company_notes": "Series B healthtech startup focused on FHIR interoperability, remote-first globally"
+  "company_notes": "Series B healthtech startup focused on FHIR interoperability, remote-first globally",
+  "generate_resume": true,
+  "generate_cover_letter": false
 }
 ```
 
@@ -209,17 +214,17 @@ lead_name: {your_name_in_team}
 Begin your work loop immediately.
 ```
 
-Workers claim tasks from the shared pool, run resume-tailor → cover-letter-creator for each, and report back to you. Because tasks are claimed atomically, any worker that finishes early will automatically pick up tasks abandoned by a failed worker.
+Workers claim tasks from the shared pool, run resume-tailor (resume only — no cover letter in this pass) for each, and report back to you. Because tasks are claimed atomically, any worker that finishes early will automatically pick up tasks abandoned by a failed worker.
 
 ### 7d. Monitor progress
 
 As workers complete or fail jobs, they send you messages in the form:
 ```
 completed {company} | {title}
-resume: {path}
-cover_letter: {path}
+resume_yaml: {path}
+resume_pdf: {path}
 ```
-or:
+(In this resume-only pass there are no cover-letter paths.) Or:
 ```
 failed {company} | {title}
 reason: {error}
@@ -257,7 +262,7 @@ Use this path only if `TeamCreate` or `SendMessage` failed in Step 7a. This happ
 
 ## Final Report
 
-After all pipeline stages complete, write a full report to disk **and** print a condensed summary.
+After the resume pass completes (Step 7), write a full report to disk **and** print a condensed summary. Write this report **before** asking about cover letters in Step 8 — cover letters have not been generated yet, so the Cover Letter column reads `— (not generated)` for now. If the user opts into cover letters in Step 8, you will update this file.
 
 ### Write to Disk
 
@@ -272,14 +277,14 @@ Create `$JOB_DATA_ROOT/output/{YYYY-MM-DD}/final-report.md` (create the director
 
 | Rank | Company | Title | Score | URL | Status |
 |------|---------|-------|-------|-----|--------|
-| 1    | Acme    | Principal Engineer | 87 | https://boards.greenhouse.io/acme/jobs/123 | ✓ Resume + Cover Letter |
+| 1    | Acme    | Principal Engineer | 87 | https://boards.greenhouse.io/acme/jobs/123 | ✓ Resume |
 | 2    | ...     | ...   | ...   | https://... | ...    |
 
 ## Output Files
 
 | Company | Resume | Cover Letter |
 |---------|--------|--------------|
-| Acme    | job-data/output/YYYY-MM-DD/Acme/{candidate_name}_CV.pdf | job-data/output/YYYY-MM-DD/Acme/cover_letter.pdf |
+| Acme    | job-data/output/YYYY-MM-DD/Acme/{candidate_name}_Acme_Resume.pdf | — (not generated) |
 
 ## Skipped Postings
 
@@ -297,13 +302,53 @@ Print a condensed table (no URLs — those are in the disk report):
 
 | Rank | Company | Title | Score | Status |
 |------|---------|-------|-------|--------|
-| 1    | Acme    | Principal Engineer | 87 | ✓ Resume + Cover Letter prepared |
+| 1    | Acme    | Principal Engineer | 87 | ✓ Resume prepared |
 | 2    | ...     | ...   | ...   | ...    |
 
 Full report with URLs: job-data/output/YYYY-MM-DD/final-report.md
 ```
 
 List any postings that were skipped (score < 75 or already applied) below the table.
+
+## Step 8: Offer Cover Letters
+
+Cover letters are **not** generated by default. After the Final Report is written, ask the user once whether to generate them.
+
+Print exactly this prompt (substitute the prepared companies):
+
+```
+Resumes are prepared and the final report is written. Cover letters are NOT generated by default.
+Generate cover letters for the prepared jobs ({company1}, {company2}, ...)?
+Reply `yes` to generate them, or `no` to finish here.
+```
+
+Wait for the user's reply.
+
+- If the reply is `no`, `none`, empty, or contains no clear affirmative, **stop here** — the run is complete. Do not generate cover letters.
+- If the reply is affirmative (`yes`, `y`, `sure`, etc.), run the **cover-letter pass** below. The user may also name a subset of companies; if so, only prepare cover letters for those.
+
+### Cover-letter pass
+
+Repeat the team workflow from Step 7, but for cover letters only:
+
+1. Create a team named `job-prep-{YYYY-MM-DD}-cl` (or reuse the fallback path from 7f if `TeamCreate`/`SendMessage` are unavailable).
+2. For each prepared job in scope, call `TaskCreate` with the same JSON block as Step 7b, except set the stage flags for a cover-letter-only task and include the resume path produced in Step 7:
+   ```json
+   {
+     "url": "https://...",
+     "company": "Acme Corp",
+     "title": "Principal Engineer",
+     "output_dir": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}",
+     "score": 87,
+     "job_description_text": "...",
+     "company_notes": "...",
+     "generate_resume": false,
+     "generate_cover_letter": true,
+     "resume_yaml_path": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}/{candidate_name}_{sanitized_company}_Resume.yaml"
+   }
+   ```
+3. Spawn one `job-pipeline-worker` per task (same prompt as 7c), monitor their `completed`/`failed` messages (now carrying `cover_letter_md` / `cover_letter_pdf` paths), then shut down and `TeamDelete` the team.
+4. **Update `final-report.md`**: replace each `— (not generated)` in the Cover Letter column with the cover-letter PDF path, and update the Status column to `✓ Resume + Cover Letter`. Reprint the condensed console summary.
 
 
 ## Post-Task Reflection and Error Logging

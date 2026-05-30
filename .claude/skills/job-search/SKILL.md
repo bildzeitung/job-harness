@@ -1,6 +1,6 @@
 ---
 name: job-search
-description: Run the full job search harness — seek fresh postings, score them, and prepare tailored resumes and cover letters for the top matches.
+description: Run the full job search harness — seek fresh postings, score them, and prepare tailored resumes for the top matches (cover letters optional, offered at the end).
 allowed-tools: Read, Write, Bash, Agent(job-seeker, job-preparer)
 ---
 
@@ -38,6 +38,6 @@ Replace the array with the actual `enabled_sources` list.
 
 1. Spawn the `job-seeker` agent (subagent_type: job-seeker). It reads `sources-config.json` to know which sources are active, searches those sources in parallel for remote, Canada-eligible senior roles, deduplicates against the SQLite DB, inserts new postings, and saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`. Wait for it to complete.
 
-2. Spawn the `job-preparer` agent (subagent_type: job-preparer). It queries the SQLite DB directly for new postings — no file argument needed. It will score every posting in parallel, present the top 5 (min score 75) to the user for selection, then produce a tailored resume, cover letter, and PDF for each user-selected job under `job-data/output/YYYY-MM-DD/`. Wait for it to complete.
+2. Spawn the `job-preparer` agent (subagent_type: job-preparer). It queries the SQLite DB directly for new postings — no file argument needed. It will score every posting in parallel, present the top 5 (min score 75) to the user for selection, then produce a tailored resume and PDF for each user-selected job under `job-data/output/YYYY-MM-DD/`. After writing the final report it asks once whether to generate cover letters (off by default); if the user opts in it runs a follow-up cover-letter pass. Wait for it to complete.
 
 3. Report the final summary table that `job-preparer` produces, including rank, company, title, score, and status for each prepared application.
