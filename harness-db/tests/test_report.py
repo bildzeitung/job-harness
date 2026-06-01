@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 from harness_db.models import Posting
 from harness_db.report import (
     render_report,
+    report_data,
     score_histogram,
     status_summary,
     top_postings,
@@ -95,3 +98,41 @@ def test_render_report_includes_all_sections():
     assert "Score distribution (scored only)" in out
     assert "Top 5 (score >= 75)" in out
     assert "Co" in out
+
+
+def test_report_data_top_and_below_min_counts():
+    postings = [
+        _scored("hit", 90, applicants=4, company="Acme", title="Principal Engineer"),
+        _scored("low", 60),
+        Posting(url="new", status="new"),
+    ]
+    data = report_data(postings, min_score=75, top=5)
+    assert data["total"] == 3
+    assert data["min_score"] == 75
+    assert data["scored_total"] == 2
+    assert data["scored_below_min"] == 1
+    assert [row["url"] for row in data["top"]] == ["hit"]
+    top = data["top"][0]
+    assert top["company"] == "Acme"
+    assert top["title"] == "Principal Engineer"
+    assert top["final_score"] == 90
+    assert top["applicant_count"] == 4
+    # job_description_text is intentionally excluded (large, re-fetched on demand).
+    assert "job_description_text" not in top
+
+
+def test_report_data_scored_on_scopes_counts_and_top():
+    postings = [
+        _scored("today", 90, scored_date="2026-05-29T10:00:00Z"),
+        _scored("today-low", 60, scored_date="2026-05-29T11:00:00Z"),
+        _scored("yesterday", 95, scored_date="2026-05-28T09:00:00Z"),
+    ]
+    data = report_data(postings, min_score=75, top=5, scored_on="2026-05-29")
+    assert data["scored_total"] == 2
+    assert data["scored_below_min"] == 1
+    assert [row["url"] for row in data["top"]] == ["today"]
+
+
+def test_report_data_top_is_json_serializable():
+    data = report_data([_scored("a", 90)], min_score=75, top=5)
+    json.dumps(data)  # must not raise

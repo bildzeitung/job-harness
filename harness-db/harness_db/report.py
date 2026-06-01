@@ -17,11 +17,30 @@ __all__ = [
     "status_summary",
     "score_histogram",
     "top_postings",
+    "report_data",
     "render_report",
 ]
 
 # Width of each score bucket in the histogram (0-9, 10-19, ...).
 _BUCKET_SIZE = 10
+
+# Per-posting fields exposed in the JSON report's "top" list — everything a caller
+# needs to rank, present, and map back to a posting, minus job_description_text
+# (large, and re-fetched on demand during preparation).
+_TOP_FIELDS = (
+    "url",
+    "title",
+    "company",
+    "platform",
+    "post_date",
+    "applicant_count",
+    "final_score",
+    "base_score",
+    "modifier",
+    "scoring_notes",
+    "dimension_scores",
+    "scored_date",
+)
 
 
 def status_summary(postings: Iterable[Posting]) -> list[tuple[str, int]]:
@@ -74,6 +93,40 @@ def top_postings(
     matches.sort(key=lambda p: (p.applicant_count is None, p.applicant_count or 0))
     matches.sort(key=lambda p: p.final_score or 0, reverse=True)
     return matches[:limit]
+
+
+def report_data(
+    postings: list[Posting],
+    *,
+    min_score: int = 75,
+    top: int = 15,
+    scored_on: str | None = None,
+) -> dict:
+    """Structured report for JSON consumers (e.g. job-preparer's ranking step).
+
+    Mirrors :func:`render_report` but returns data instead of text: status counts,
+    score histogram, the ranked top-N (each a dict of :data:`_TOP_FIELDS`), and the
+    count of in-scope scored postings that fell below ``min_score`` — so callers no
+    longer hand-roll SQL and ranking to build their candidate list.
+    """
+    in_scope = [
+        p
+        for p in postings
+        if p.status == "scored"
+        and p.final_score is not None
+        and (scored_on is None or (p.scored_date or "").startswith(scored_on))
+    ]
+    leaders = top_postings(postings, min_score=min_score, limit=top, scored_on=scored_on)
+    return {
+        "total": len(postings),
+        "min_score": min_score,
+        "scored_on": scored_on,
+        "scored_total": len(in_scope),
+        "scored_below_min": sum(1 for p in in_scope if p.final_score < min_score),
+        "by_status": [{"status": s, "count": c} for s, c in status_summary(postings)],
+        "score_distribution": [{"band": b, "count": c} for b, c in score_histogram(postings)],
+        "top": [{field: getattr(p, field) for field in _TOP_FIELDS} for p in leaders],
+    }
 
 
 def _render_section(title: str, rows: list[str]) -> list[str]:
