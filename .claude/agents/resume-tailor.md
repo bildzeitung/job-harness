@@ -150,7 +150,7 @@ Your MEMORY.md is currently empty. When you save new memories, they will appear 
 
 When your prompt contains an `output_dir` field (you were spawned by `job-pipeline-worker`):
 
-- Write the tailored resume YAML to the filename specified in the prompt's instruction — **not** to `./applications/`. The filename follows the pattern `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.yaml` where `{CandidateName}` is derived from `candidate-summary.json`.
+- Write the tailored resume YAML — **with the Write tool, never via `python3 -c`, a heredoc, or shell redirection** — to the filename specified in the prompt's instruction, **not** to `./applications/`. The filename follows the pattern `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.yaml` where `{CandidateName}` is the filename-safe candidate name from `harness-db candidate --filename-safe` (do not parse `candidate-summary.json` inline).
 - **Embed the company slug in the rendered PDF name.** The base CV (`$RESUME_FILE`) carries a generic `settings.render_command.pdf_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.pdf`, which renders to `{CandidateName}_CV.pdf` — the **same filename for every job**, with no company slug. In the tailored copy you write, override both `pdf_path` and `typst_path` under `settings.render_command` with **absolute paths** so the rendered files carry the company slug and land next to the YAML, matching its stem:
   ```yaml
   settings:
