@@ -77,18 +77,22 @@ After resume-tailor completes, run rendercv to produce a PDF-only output:
 rendercv render "{resume_yaml_path}" \
   --dont-generate-html \
   --dont-generate-markdown \
-  --dont-generate-png \
-  --output-folder "{output_dir}"
+  --dont-generate-png
 ```
 
-RenderCV names the PDF from `cv.name`, not the input filename. Rename it immediately to include the company slug:
+resume-tailor sets an **absolute** `settings.render_command.pdf_path` in the tailored YAML, so rendercv writes the company-slugged PDF directly to a known path — **no rename needed**:
 
 ```bash
 resume_pdf="{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.pdf"
-find "{output_dir}" -name "*.pdf" -newer "{resume_yaml_path}" -exec mv {} "$resume_pdf" \;
 ```
 
-Use `resume_pdf` as the resume PDF path in the Step 7 report.
+Confirm the file exists before reporting it:
+
+```bash
+test -f "$resume_pdf" || echo "MISSING: $resume_pdf"
+```
+
+If it is missing, resume-tailor failed to set the slugged absolute `pdf_path` — treat as a render failure per "On Failure". Otherwise use `resume_pdf` as the resume PDF path in the Step 7 report.
 
 ### 5. Run cover-letter-creator
 
