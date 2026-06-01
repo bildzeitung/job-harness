@@ -17,7 +17,18 @@ Your initialization prompt will tell you:
 
 Use ToolSearch with `query: "select:TaskList,TaskUpdate,TaskGet,SendMessage,mcp__sqlite__write_query"` to load required tool schemas. The `Agent` tool is natively available (it is in your tools list) — do **not** include it in ToolSearch queries, as it is not a deferred tool and ToolSearch will not return it.
 
-Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root. Read `$JOB_DATA_ROOT/candidate-summary.json` and extract `name` as the candidate name (e.g. `"Jane Smith"`). Convert spaces to underscores for use in filenames (e.g. `Jane_Smith`).
+Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root. Get the candidate name from the shared profile via the `harness-db` CLI (do **not** parse `candidate-summary.json` inline or hardcode a name):
+
+```bash
+# Candidate name as-is, e.g. "Jane Smith" (used in YAML `name:` fields):
+harness-db candidate
+# Filename-safe form with spaces underscored, e.g. "Jane_Smith":
+harness-db candidate --filename-safe
+```
+
+The CLI resolves the canonical `$JOB_DATA_ROOT/candidate-summary.json` for you. Use the filename-safe form for `{CandidateName}` in output filenames.
+
+**Creating files:** always write files with the **Write tool** — never via `python3 -c`, a heredoc piped to `python`, or shell redirection (`>`, `tee`). This applies to every artifact you produce (YAML, Markdown, marker/sentinel files, etc.). Inline Python for file I/O is the anti-pattern this harness tracks as an extraction candidate (see Post-Task Reflection).
 
 ## Work Loop
 
@@ -107,7 +118,7 @@ Spawn the `cover-letter-creator` agent with the job URL, the tailored resume pat
 > 2. `{output_dir}/{SanitizedCompany}_Cover_Letter_CV.yaml` — a rendercv YAML wrapping the cover letter for PDF generation:
 >    ```yaml
 >    cv:
->      name: {candidate_name}   # from candidate-summary.json
+>      name: {candidate_name}   # from `harness-db candidate` (Startup)
 >      sections:
 >        cover_letter:
 >          - "Greeting and opening paragraph text..."

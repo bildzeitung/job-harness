@@ -99,24 +99,34 @@ The script prints `[SCORED]` for each posting and `[BATCH DONE]` per file. It se
 
 ## Step 4: Query Ranked Results from DB
 
-Use ToolSearch with `query: "select:mcp__sqlite__read_query"` if the tool isn't already loaded.
+With the venv from Step 3b still active, ask the `harness-db` CLI for the ranked top-5 as JSON — **do not hand-write SQL or rank in your head.** The CLI applies the canonical ranking (score desc, then fewest applicants first) and already excludes `selected`/`prepared`/`applied`/`skipped`:
 
-Query for all scored postings, ranked:
-
-```sql
-SELECT url, title, company, platform, post_date, applicant_count,
-       final_score, base_score, modifier, scoring_notes, dimension_scores,
-       job_description_text
-FROM postings
-WHERE status = 'scored'
-ORDER BY final_score DESC
+```bash
+harness-db report --json --min-score 75 --top 5
 ```
 
-This is your ranked candidate list. Postings with status `selected`, `prepared`, `applied`, or `skipped` are automatically excluded.
+(Equivalently `python -m harness_db.cli report --json --min-score 75 --top 5`.)
+
+The JSON has the shape:
+
+```json
+{
+  "scored_total": 42,
+  "scored_below_min": 37,
+  "top": [
+    {"url": "...", "title": "...", "company": "...", "platform": "...",
+     "post_date": "...", "applicant_count": 4, "final_score": 87,
+     "base_score": 82, "modifier": 5, "scoring_notes": "...",
+     "dimension_scores": "...", "scored_date": "..."}
+  ]
+}
+```
 
 ## Step 5: Select the Top 5
 
-Take the top 5 postings with `final_score >= 75`. If fewer than 5 pass the threshold, take all that pass. Also count how many scored below 75 (you will report the count, not the list). Hand these to Step 5b for the return.
+`top` is already the top-5 postings with `final_score >= 75` (or all that pass, if fewer than 5), ranked best-fit first. `scored_below_min` is the count that scored below 75 — report the count, not the list. Hand these to Step 5b for the return.
+
+(`job_description_text` is not in this payload; you re-query it for the chosen URLs in Step 6.)
 
 ## Step 5b: Return the Ranked List to the Caller (end of `phase: score`)
 
