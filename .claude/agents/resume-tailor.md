@@ -151,6 +151,14 @@ Your MEMORY.md is currently empty. When you save new memories, they will appear 
 When your prompt contains an `output_dir` field (you were spawned by `job-pipeline-worker`):
 
 - Write the tailored resume YAML to the filename specified in the prompt's instruction — **not** to `./applications/`. The filename follows the pattern `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.yaml` where `{CandidateName}` is derived from `candidate-summary.json`.
+- **Embed the company slug in the rendered PDF name.** The base CV (`$RESUME_FILE`) carries a generic `settings.render_command.pdf_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.pdf`, which renders to `{CandidateName}_CV.pdf` — the **same filename for every job**, with no company slug. In the tailored copy you write, override both `pdf_path` and `typst_path` under `settings.render_command` with **absolute paths** so the rendered files carry the company slug and land next to the YAML, matching its stem:
+  ```yaml
+  settings:
+    render_command:
+      typst_path: {output_dir}/{CandidateName}_{SanitizedCompany}_Resume.typ
+      pdf_path: {output_dir}/{CandidateName}_{SanitizedCompany}_Resume.pdf
+  ```
+  Substitute the real absolute `{output_dir}` and names — do not leave the `OUTPUT_FOLDER`/`NAME_IN_SNAKE_CASE` placeholders. Replace the values if those keys already exist in the copied template; add them under `settings.render_command` if absent. An **absolute** `pdf_path` is deterministic: rendercv writes the PDF to exactly that path regardless of cwd or any `--output-folder` flag, so the slugged name is a property of the YAML itself and is correct no matter who renders it (the pipeline worker, an inline render, or a manual `rendercv render`). The resume PDF therefore lands at `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.pdf`.
 - **Skip step 6** (cover letter) — the pipeline calls `cover-letter-creator` separately
 - If the prompt also contains a `job_description_text` field, use that as the job posting content and **skip the WebFetch in step 2** — the text was already fetched and cached by `job-scorer`
 - Complete all other steps normally
