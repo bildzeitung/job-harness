@@ -67,32 +67,37 @@ One call per unique company. Print: `[ZIPRECRUITER] Wrote {N} company records to
 
 ## Output
 
-Save results to `$JOB_DATA_ROOT/jobs/ziprecruiter-{YYYY-MM-DD}.json` (today's date):
+Hand your verified postings to the `api_search` module — it does the dedup-by-URL merge and writes the canonical consolidator file, so you do **not** assemble, merge, or post-process that file yourself, and you write **no** one-off Python to do it.
+
+1. With the Write tool, save your verified postings as a JSON **array** (one object per posting, schema below) to a staging file. Resolve `$JOB_DATA_ROOT` to its absolute path first (`bash -c 'echo $JOB_DATA_ROOT'`):
+   `{JOB_DATA_ROOT}/jobs/ziprecruiter-{YYYY-MM-DD}.batch.json`
+2. Merge the batch into the canonical file:
+   ```bash
+   PROJECT_ROOT=$(git rev-parse --show-toplevel)
+   . "$PROJECT_ROOT/venv/bin/activate"
+   python -m api_search append ziprecruiter --from "$JOB_DATA_ROOT/jobs/ziprecruiter-{YYYY-MM-DD}.batch.json"
+   ```
+   This dedups your batch (and any existing `ziprecruiter-{YYYY-MM-DD}.json`) by URL, writes the consolidator-ready file, and consumes the staging file. It prints `[API-SEARCH:APPEND:ZIPRECRUITER] +{N} new ({skipped} dup/blank) — {total} total in {path}`.
+
+Each posting object:
 
 ```json
 {
-  "search_date": "YYYY-MM-DD",
+  "title": "Principal Software Engineer",
+  "company": "Acme Corp",
+  "url": "https://www.ziprecruiter.com/jobs/...",
   "platform": "ziprecruiter",
-  "total_found": 0,
-  "postings": [
-    {
-      "title": "Principal Software Engineer",
-      "company": "Acme Corp",
-      "url": "https://www.ziprecruiter.com/jobs/...",
-      "platform": "ziprecruiter",
-      "post_date": "YYYY-MM-DD",
-      "applicant_count": null,
-      "employment_type": "full-time|contract|freelance",
-      "location_note": "Remote, Canada OK",
-      "description_summary": "2-3 sentence summary of the role and key requirements"
-    }
-  ]
+  "post_date": "YYYY-MM-DD",
+  "applicant_count": null,
+  "employment_type": "full-time|contract|freelance",
+  "location_note": "Remote, Canada OK",
+  "description_summary": "2-3 sentence summary of the role and key requirements"
 }
 ```
 
 Use `null` for `post_date` or `applicant_count` when not available.
 
-After saving, print: `[ZIPRECRUITER] Found {N} postings — saved to {path}`
+Forward the `[API-SEARCH:APPEND:ZIPRECRUITER]` line in your final report.
 
 
 ## Post-Task Reflection and Error Logging

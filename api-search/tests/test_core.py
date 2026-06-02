@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from api_search.core import run, write_output
+from api_search.core import append_postings, dedup_by_url, run, write_output
 from tests.conftest import FakeResp, make_client
 
 SUMMARY = {
@@ -110,3 +110,90 @@ def test_write_output_requires_job_data_root(monkeypatch):
     monkeypatch.delenv("JOB_DATA_ROOT", raising=False)
     with pytest.raises(RuntimeError, match="JOB_DATA_ROOT"):
         write_output("adzuna", [])
+
+
+# ── dedup_by_url ──────────────────────────────────────────────────────────────
+
+
+def test_dedup_by_url_keeps_first_and_drops_blanks():
+    out = dedup_by_url(
+        [
+            {"url": "a", "n": 1},
+            {"url": "a", "n": 2},  # dup → dropped
+            {"url": "", "n": 3},  # blank → dropped
+            {"n": 4},  # missing → dropped
+            {"url": "b", "n": 5},
+        ]
+    )
+    assert out == [{"url": "a", "n": 1}, {"url": "b", "n": 5}]
+
+
+# ── append_postings ───────────────────────────────────────────────────────────
+
+
+def _read_postings(env, platform, batch_date):
+    return json.loads((env / "jobs" / f"{platform}-{batch_date}.json").read_text())["postings"]
+
+
+def test_append_postings_writes_when_no_existing_file(env):
+    batch = [{"url": "u1", "title": "A"}, {"url": "u2", "title": "B"}]
+    result = append_postings("linkedin", batch, batch_date="2026-06-01")
+    assert result["added"] == 2
+    assert result["total"] == 2
+    assert result["skipped"] == 0
+    assert result["path"] == str(env / "jobs" / "linkedin-2026-06-01.json")
+    payload = json.loads(Path(result["path"]).read_text())
+    assert payload["platform"] == "linkedin"
+    assert payload["total_found"] == 2
+    assert [p["url"] for p in payload["postings"]] == ["u1", "u2"]
+
+
+def test_append_postings_merges_and_dedups_against_existing(env):
+    append_postings("indeed", [{"url": "u1", "title": "A"}], batch_date="2026-06-01")
+    result = append_postings(
+        "indeed",
+        [{"url": "u1", "title": "A-updated"}, {"url": "u2", "title": "B"}],
+        batch_date="2026-06-01",
+    )
+    assert result["added"] == 1  # only u2 is new
+    assert result["skipped"] == 1  # u1 already present
+    assert result["total"] == 2
+    postings = _read_postings(env, "indeed", "2026-06-01")
+    # Existing record wins on collision (keeps original title).
+    assert postings[0] == {"url": "u1", "title": "A"}
+    assert [p["url"] for p in postings] == ["u1", "u2"]
+
+
+def test_append_postings_dedups_within_new_batch(env):
+    result = append_postings(
+        "research",
+        [{"url": "u1"}, {"url": "u1"}, {"url": ""}, {"url": "u2"}],
+        batch_date="2026-06-01",
+    )
+    assert result["added"] == 2
+    assert [p["url"] for p in _read_postings(env, "research", "2026-06-01")] == ["u1", "u2"]
+
+
+def test_append_postings_tolerates_corrupt_existing_file(env):
+    (env / "jobs").mkdir(parents=True, exist_ok=True)
+    (env / "jobs" / "ziprecruiter-2026-06-01.json").write_text("{ not json")
+    result = append_postings("ziprecruiter", [{"url": "u1"}], batch_date="2026-06-01")
+    assert result["added"] == 1
+    assert result["total"] == 1
+
+
+@pytest.mark.parametrize("bad", ['{"postings": null}', '{"postings": 42}', "[1, 2, 3]"])
+def test_append_postings_tolerates_non_list_postings(env, bad):
+    # A file that parses but whose "postings" is null/non-list (or a top-level
+    # list) must be treated as empty, not crash.
+    (env / "jobs").mkdir(parents=True, exist_ok=True)
+    (env / "jobs" / "indeed-2026-06-01.json").write_text(bad)
+    result = append_postings("indeed", [{"url": "u1"}], batch_date="2026-06-01")
+    assert result["added"] == 1
+    assert [p["url"] for p in _read_postings(env, "indeed", "2026-06-01")] == ["u1"]
+
+
+def test_append_postings_requires_job_data_root(monkeypatch):
+    monkeypatch.delenv("JOB_DATA_ROOT", raising=False)
+    with pytest.raises(RuntimeError, match="JOB_DATA_ROOT"):
+        append_postings("linkedin", [])
