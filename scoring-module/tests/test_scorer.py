@@ -12,6 +12,7 @@ from scoring_module.scorer import (
     _age_modifier,
     _competition_modifier,
     _fetch_jd,
+    _format_candidate_profile,
     _render_disqualifiers,
     _sanitize,
     _score_one,
@@ -126,6 +127,23 @@ def test_render_disqualifiers_includes_name_modifier_examples():
 
 def test_render_disqualifiers_empty_config():
     assert _render_disqualifiers({}) == "- No disqualifiers: 0"
+
+
+# ---------------------------------------------------------------------------
+# _format_candidate_profile — comp floor surfacing
+# ---------------------------------------------------------------------------
+
+
+def test_format_candidate_profile_includes_comp_floor_when_set():
+    profile = {"requirements": {"work_type": "fully remote", "comp_floor_cad": 100000}}
+    text = _format_candidate_profile(profile)
+    assert "minimum compensation=CAD 100,000" in text
+
+
+def test_format_candidate_profile_omits_comp_floor_when_absent():
+    profile = {"requirements": {"work_type": "fully remote"}}
+    text = _format_candidate_profile(profile)
+    assert "minimum compensation" not in text
 
 
 # Loading/seeding of disqualifiers.yaml now lives in harness_db and is covered by

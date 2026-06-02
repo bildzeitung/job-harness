@@ -36,8 +36,8 @@ Otherwise:
   "notable": "13 years at Oracle (OCI, Public Cloud, Health & AI)",
   "stack": ["OCI", "Azure", "AWS", "GCP", "Kubernetes", "Terraform", "Helm", "Python", "Java", "C#", "SQL", "GraphQL", "FHIR", "HL7"],
   "domains": ["Cloud Infrastructure (OCI/Azure/AWS)", "Distributed Systems", "Healthcare/FHIR", "AI/ML Platform", "Developer Platforms"],
-  "target_titles": ["Principal Engineer", "Staff Engineer", "Distinguished Engineer", "Senior Staff Engineer", "Cloud Architect", "Platform Engineer", "AI/ML Infrastructure Engineer", "Head of Engineering"],
-  "seniority_keywords": ["Principal", "Staff", "Distinguished", "Senior Staff", "Cloud Architect", "Platform Engineer", "AI Infrastructure", "ML Infrastructure", "Head of Engineering", "Senior Software", "Staff Software"],
+  "target_titles": ["Principal Engineer", "Staff Engineer", "Distinguished Engineer", "Senior Staff Engineer", "Cloud Architect", "Platform Engineer", "AI/ML Infrastructure Engineer"],
+  "seniority_keywords": ["Principal", "Staff", "Distinguished", "Senior Staff", "Cloud Architect", "Platform Engineer", "AI Infrastructure", "ML Infrastructure", "Senior Software", "Staff Software"],
   "requirements": {
     "work_type": "fully remote",
     "eligibility": "Canada-eligible",
