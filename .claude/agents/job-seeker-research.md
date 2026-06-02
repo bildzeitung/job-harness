@@ -84,32 +84,37 @@ Discard matches before saving. Do not invent exclusions beyond the configured li
 
 ## Output
 
-Save results to `$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.json` (today's date):
+Hand your verified postings to the `api_search` module — it does the dedup-by-URL merge and writes the canonical consolidator file, so you do **not** assemble, merge, or post-process that file yourself, and you write **no** one-off Python to do it.
+
+1. With the Write tool, save your verified postings as a JSON **array** (one object per posting, schema below) to a staging file. Resolve `$JOB_DATA_ROOT` to its absolute path first (`bash -c 'echo $JOB_DATA_ROOT'`):
+   `{JOB_DATA_ROOT}/jobs/research-{YYYY-MM-DD}.batch.json`
+2. Merge the batch into the canonical file:
+   ```bash
+   PROJECT_ROOT=$(git rev-parse --show-toplevel)
+   . "$PROJECT_ROOT/venv/bin/activate"
+   python -m api_search append research --from "$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.batch.json"
+   ```
+   This dedups your batch (and any existing `research-{YYYY-MM-DD}.json`) by URL, writes the consolidator-ready file, and consumes the staging file. It prints `[API-SEARCH:APPEND:RESEARCH] +{N} new ({skipped} dup/blank) — {total} total in {path}`.
+
+Each posting object:
 
 ```json
 {
-  "search_date": "YYYY-MM-DD",
+  "title": "Principal Software Engineer",
+  "company": "Acme Corp",
+  "url": "https://jobs.ashbyhq.com/acmecorp/...",
   "platform": "research",
-  "total_found": 0,
-  "postings": [
-    {
-      "title": "Principal Software Engineer",
-      "company": "Acme Corp",
-      "url": "https://jobs.ashbyhq.com/acmecorp/...",
-      "platform": "research",
-      "post_date": "YYYY-MM-DD",
-      "applicant_count": null,
-      "employment_type": "full-time|contract|freelance",
-      "location_note": "Remote, Canada OK",
-      "description_summary": "2-3 sentence summary of the role and key requirements"
-    }
-  ]
+  "post_date": "YYYY-MM-DD",
+  "applicant_count": null,
+  "employment_type": "full-time|contract|freelance",
+  "location_note": "Remote, Canada OK",
+  "description_summary": "2-3 sentence summary of the role and key requirements"
 }
 ```
 
 Use `null` for `post_date` or `applicant_count` when not available.
 
-After saving, print: `[RESEARCH] Found {N} postings — saved to {path}`
+Forward the `[API-SEARCH:APPEND:RESEARCH]` line in your final report.
 
 ## Write Company Intelligence to DB
 
