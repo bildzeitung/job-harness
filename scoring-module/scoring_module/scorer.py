@@ -48,6 +48,15 @@ def _render_disqualifiers(config: dict[str, Any]) -> str:
 def _format_candidate_profile(profile: dict[str, Any]) -> str:
     """Build the profile text block from the structured candidate-summary.json fields."""
     req = profile.get("requirements", {})
+    requirements = (
+        f"Requirements: work_type={req.get('work_type', '')}; "
+        f"eligibility={req.get('eligibility', '')}; "
+        f"employment={', '.join(req.get('employment', []))}"
+    )
+    if comp_floor := req.get("comp_floor_cad"):
+        requirements += (
+            f"; minimum compensation=CAD {comp_floor:,} (compare listed pay in CAD-equivalent)"
+        )
     lines = [
         f"Name: {profile.get('name', '')}",
         f"Headline: {profile.get('headline', '')}",
@@ -57,9 +66,7 @@ def _format_candidate_profile(profile: dict[str, Any]) -> str:
         f"Stack: {', '.join(profile.get('stack', []))}",
         f"Domains: {', '.join(profile.get('domains', []))}",
         f"Target titles: {', '.join(profile.get('target_titles', []))}",
-        f"Requirements: work_type={req.get('work_type', '')}; "
-        f"eligibility={req.get('eligibility', '')}; "
-        f"employment={', '.join(req.get('employment', []))}",
+        requirements,
     ]
     return "\n".join(lines)
 
