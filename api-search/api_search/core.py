@@ -155,8 +155,10 @@ def append_postings(
     existing: list[dict[str, Any]] = []
     if out_path.exists():
         try:
-            existing = json.loads(out_path.read_text()).get("postings", [])
-        except (json.JSONDecodeError, OSError, AttributeError):
+            loaded = json.loads(out_path.read_text())
+            postings = loaded.get("postings") if isinstance(loaded, dict) else None
+            existing = postings if isinstance(postings, list) else []
+        except (json.JSONDecodeError, OSError):
             existing = []
 
     existing_urls = {p.get("url") for p in existing if p.get("url")}

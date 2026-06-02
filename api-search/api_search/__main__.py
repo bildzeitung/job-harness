@@ -36,7 +36,15 @@ def _append(argv: list[str]) -> int:
             print(_usage(), file=sys.stderr)
             return 2
 
-    raw = open(from_file).read() if from_file else sys.stdin.read()
+    if from_file:
+        try:
+            with open(from_file) as f:
+                raw = f.read()
+        except OSError as e:
+            print(f"[API-SEARCH:APPEND] cannot read batch file {from_file}: {e}", file=sys.stderr)
+            return 1
+    else:
+        raw = sys.stdin.read()
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:

@@ -182,6 +182,17 @@ def test_append_postings_tolerates_corrupt_existing_file(env):
     assert result["total"] == 1
 
 
+@pytest.mark.parametrize("bad", ['{"postings": null}', '{"postings": 42}', "[1, 2, 3]"])
+def test_append_postings_tolerates_non_list_postings(env, bad):
+    # A file that parses but whose "postings" is null/non-list (or a top-level
+    # list) must be treated as empty, not crash.
+    (env / "jobs").mkdir(parents=True, exist_ok=True)
+    (env / "jobs" / "indeed-2026-06-01.json").write_text(bad)
+    result = append_postings("indeed", [{"url": "u1"}], batch_date="2026-06-01")
+    assert result["added"] == 1
+    assert [p["url"] for p in _read_postings(env, "indeed", "2026-06-01")] == ["u1"]
+
+
 def test_append_postings_requires_job_data_root(monkeypatch):
     monkeypatch.delenv("JOB_DATA_ROOT", raising=False)
     with pytest.raises(RuntimeError, match="JOB_DATA_ROOT"):
