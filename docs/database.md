@@ -102,15 +102,15 @@ Weights used when computing `base_score`:
 
 ### Scoring modifiers
 
-The `modifier` field is the sum of three independent adjustments:
+The `modifier` field is the sum of independent adjustments computed during scoring by the `scoring_module` script (which runs the rubric above on `claude-haiku-4-5`).
 
-**Disqualifier modifier** (applied before full scoring; may result in `status = 'skipped'`):
+**Disqualifier modifiers** (applied by the scorer LLM during scoring; sum if several match). These are **user-configurable** — they live in the `scoring_modifiers` section of `$JOB_DATA_ROOT/disqualifiers.yaml`, not hard-coded. They are distinct from the pre-filter (which marks postings `skipped` *before* scoring; see [job-states.md](job-states.md)). The shipped defaults are:
 
-| Condition | Modifier |
-|-----------|----------|
-| Requires specific named certification | −40 |
-| Relocation required | −30 |
-| US-only / geography excludes Canada | −25 |
+| Condition (default name) | Modifier |
+|--------------------------|----------|
+| Requires a named formal certification (AWS Certified, PMP, CISSP, CKA, …) | −40 |
+| Requires on-site or relocation | −30 |
+| Geography excludes Canada (US-only) | −25 |
 | None | 0 |
 
 **Age modifier** (based on `post_date`):
@@ -134,11 +134,19 @@ The `modifier` field is the sum of three independent adjustments:
 | > 200 | −10 |
 | Unknown | 0 |
 
+**Fetch-failure modifier** (applied in code when the full JD cannot be retrieved):
+
+| Condition | Modifier |
+|-----------|----------|
+| Full JD could not be fetched — posting scored from its short `description_summary` instead | −5 |
+
 ---
 
 ## Table: `companies`
 
-One row per hiring company name. Written by `job-seeker-research` (with full notes) and updated by `job-scorer` (flags + last-seen date) on every pipeline run. Read by `job-preparer` when assembling task context for workers.
+One row per hiring company name. Populated during the **Seek** stage: `consolidate_module` creates the row (name + `last_seen_date`) when a posting is first inserted, the platform searchers (e.g. `job-seeker-adzuna`) enrich it with `canada_confirmed` / `last_seen_date`, and `job-seeker-research` adds `notes` plus the remote/Canada flags. `job-seeker-company` later fills `careers_url` / `fetch_notes`. Read by `job-preparer` when assembling task context for workers.
+
+> Note: the batch `scoring_module` used by the main pipeline updates **only** the `postings` row — it does not touch `companies`. The standalone `job-scorer` agent (single-posting path, not the batch scorer) is the one that upserts company flags; see below.
 
 ```sql
 CREATE TABLE companies (
@@ -170,7 +178,7 @@ CREATE TABLE companies (
 
 ## Table: `company_postings`
 
-Links each posting to its hiring company. One row per posting URL (`url` is the primary key), so the relationship is **1 company : N postings**. Written by `job-seeker` immediately after inserting a posting; the matching `companies` row is always inserted first.
+Links each posting to its hiring company. One row per posting URL (`url` is the primary key), so the relationship is **1 company : N postings**. Written by `consolidate_module` in the same transaction that inserts the posting; the matching `companies` row is always inserted first (`INSERT … ON CONFLICT DO NOTHING`).
 
 ```sql
 CREATE TABLE company_postings (
@@ -186,12 +194,17 @@ CREATE TABLE company_postings (
 
 ### Writers and flag promotion rules
 
-| Agent | What it writes | Conflict rule |
-|-------|---------------|---------------|
-| `job-seeker-research` | All fields; `remote_confirmed = 1`, `canada_confirmed = 1`, `notes` | Overwrites flags to 1; preserves existing notes if new notes are empty |
-| `job-scorer` | `remote_confirmed`, `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags can only increase (0→1), never decrease (1→0) |
+| Writer | What it writes | Conflict rule |
+|--------|---------------|---------------|
+| `consolidate_module` (Seek) | `name`, `last_seen_date` on first insert | `INSERT … ON CONFLICT DO NOTHING` — never overwrites an existing row |
+| platform searchers (e.g. `job-seeker-adzuna`) | `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags only increase (0→1); `last_seen_date` advances to the newer date |
+| `job-seeker-research` | `notes`, `remote_confirmed = 1`, `canada_confirmed = 1`, `researched_date` | Overwrites flags to 1; preserves existing notes if new notes are empty |
+| `job-seeker-company` | `careers_url`, `fetch_notes` | Fills in research findings |
+| `job-scorer` agent (standalone single-posting path only) | `remote_confirmed`, `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags can only increase (0→1), never decrease (1→0) |
 
-### How `remote_confirmed` / `canada_confirmed` are set by the scorer
+### How `remote_confirmed` / `canada_confirmed` are set by the standalone `job-scorer` agent
+
+> This applies to the standalone `job-scorer` agent only. The batch `scoring_module` used by the main `job-preparer` pipeline does **not** write to `companies`.
 
 The scorer's `remote_canada_confirmed` dimension is scored 1–10. If that dimension score is **≥ 8**, the posting explicitly states remote + Canada eligibility and both flags are set to `1` on upsert. Below 8, both are set to `0` in the upsert, but `MAX()` ensures an existing `1` is never overwritten.
 
