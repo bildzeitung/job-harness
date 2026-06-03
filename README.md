@@ -18,7 +18,8 @@ An AI harness that searches for jobs. Currently, it searches:
 
 ## Setup
 
-* run: `init.sh`
+* for Python tools, run: `init.sh`
+* for 3rd party tools (rtk), run: `3rdparty-install.sh`
 * also, `mkdir ~/job-data` (this is your job search directory)
 
 ## Configure
@@ -45,7 +46,7 @@ Update `.claude/settings.local.json` with:
 The input YAML resume that this harness expects is in [RenderCV format](https://github.com/rendercv/rendercv).
 This tool does a create job of creating a formatted resume so that you can
 concentrate on the content instead. Once you have created your YAML resume, you
-can use this harness. 
+can use this harness.
 
 ### Agents
 
@@ -73,4 +74,3 @@ A web app version of the text UI is available in the `./web` directory. One work
 ; export JOB_DATA_ROOT=/path/to/job-data
 ; docker-compose -f web/docker-compose.yml up --build
 ```
-
