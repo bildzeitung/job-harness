@@ -6,7 +6,7 @@ flowchart TD
 
     %% ─── STAGE 1: SEEK ───────────────────────────────────────────────────────
     subgraph SEEK ["STAGE 1 — SEEK"]
-        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator<br>① Generate candidate-summary.json  (cached per day)<br>② Init SQLite schema  (postings + companies tables)<br>③ MCP connectivity probe  (LinkedIn · Gmail · Indeed · ZipRecruiter)"]
+        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator<br>① Read jobs/sources-config.json  (which sources are enabled)<br>② Generate candidate-summary.json  (cached per day)<br>③ Init SQLite schema  (postings + companies tables)<br>④ MCP connectivity probe  (LinkedIn · Gmail · Indeed · ZipRecruiter)"]
 
         SUB_LI["job-seeker-linkedin<br>LinkedIn MCP"]
         SUB_EM["job-seeker-email<br>Gmail MCP"]
@@ -16,7 +16,7 @@ flowchart TD
         SUB_GH["job-seeker-greenhouse<br>Greenhouse · Lever public APIs"]
         SUB_RES["job-seeker-research<br>Wellfound · Ashby · funded startups<br>→ UPSERT companies (notes · remote/Canada confirmed)"]
 
-        S_DONE["Merge results  ·  deduplicate against existing DB URLs<br>Audit log → jobs/search-YYYY-MM-DD.json<br>INSERT OR IGNORE into DB  (status = 'new')"]
+        S_DONE["consolidate_module  (Python)<br>Merge per-platform temp files  ·  deduplicate against existing DB URLs<br>Audit log → jobs/search-YYYY-MM-DD.json<br>INSERT OR IGNORE postings (status = 'new')<br>Create companies row + company_postings link  (ON CONFLICT DO NOTHING)"]
 
         SEEKER -->|"conditional on probe"| SUB_LI & SUB_EM & SUB_IND & SUB_ZIP
         SEEKER -->|"always · parallel"| SUB_ADZ & SUB_GH & SUB_RES
@@ -34,44 +34,49 @@ flowchart TD
         SC1["Query DB<br>WHERE status = 'new'  OR  (status = 'scored' AND scored_date < 7 days ago)"]
         SC2["Pre-filter<br>Hard disqualifiers → UPDATE status = 'skipped'<br>(US-only · on-site only · intern · entry-level · relocation required)"]
         SC3["Write scoring-batch-N.json  (≤ 20 postings per file)<br>Delete stale batch files first"]
-        SC4["scoring_module  (Python · Claude API · threaded · prompt-cached)<br><br>Per posting:<br>  · WebFetch full JD text  (skipped if jd_text already in DB)<br>  · Score 5 dimensions  →  weighted base score  (× 10 = 1–100)<br>      tech fit 35%  ·  seniority match 25%  ·  domain fit 20%<br>      remote/Canada confirmed 10%  ·  role clarity 10%<br>  · Disqualifier modifiers:<br>      requires named certification −40  ·  US-only −25  ·  relocation required −30<br>  · Freshness modifiers:  ≤3 days +8  ·  4–7 days +4  ·  15–30 days −5  ·  >30 days −12<br>  · Applicant modifiers:  <25 +5  ·  101–200 −5  ·  >200 −10<br>  · final_score = clamp(base_score + modifier, 1, 100)<br>  · UPDATE postings: scores · job_description_text · status = 'scored'<br>  · UPSERT companies: last_seen_date · remote/canada flags  (MAX — never downgrade)"]
+        SC4["scoring_module  (Python · Claude Haiku 4.5 · threaded · prompt-cached)<br><br>Per posting:<br>  · Fetch full JD text  (skipped if jd_text already in DB)<br>  · Score 5 dimensions  →  weighted base score  (× 10 = 1–100)<br>      tech fit 35%  ·  seniority match 25%  ·  domain fit 20%<br>      remote/Canada confirmed 10%  ·  role clarity 10%<br>  · Disqualifier modifiers  (from disqualifiers.yaml scoring_modifiers):<br>      named certification −40  ·  on-site/relocation −30  ·  excludes Canada −25<br>  · Freshness modifiers:  ≤3 days +8  ·  4–7 days +4  ·  15–30 days −5  ·  >30 days −12<br>  · Applicant modifiers:  <25 +5  ·  101–200 −5  ·  >200 −10<br>  · Fetch-failed (scored from summary) −5<br>  · final_score = clamp(base_score + modifier, 1, 100)<br>  · UPDATE postings only: scores · job_description_text · status = 'scored'<br>    (does NOT write the companies table)"]
         SC1 --> SC2 --> SC3 --> SC4
     end
 
     %% ─── STAGE 3: SELECT ─────────────────────────────────────────────────────
-    subgraph SELECT ["STAGE 3 — SELECT  (job-preparer)"]
-        SEL1["Query DB<br>WHERE status = 'scored'  ORDER BY final_score DESC"]
-        SEL2["Take top 5  where  final_score ≥ 75<br>(if fewer than 5 pass, take all that do)"]
-        SEL3["UPDATE DB:  status = 'selected',  selected_date = today"]
+    subgraph SELECT ["STAGE 3 — SELECT  (job-preparer phase:score → user → phase:prepare)"]
+        SEL1["phase:score — harness-db report --json --min-score 75 --top 5<br>Rank scored postings  (score desc, then fewest applicants)<br>Return ranked top-5 to the job-search skill  ·  job-preparer stops"]
+        SEL2{{"USER picks which jobs to prepare<br>(job-search skill prompts in plain text)"}}
+        SEL3["phase:prepare — for the chosen URLs:<br>UPDATE DB:  status = 'selected',  selected_date = today"]
         SEL1 --> SEL2 --> SEL3
     end
 
     %% ─── STAGE 4: PREPARE ────────────────────────────────────────────────────
     subgraph PREPARE ["STAGE 4 — PREPARE  (job-preparer orchestrates  ·  job-pipeline-worker × N)"]
-        PR1["TeamCreate:  job-prep-YYYY-MM-DD<br>Query companies WHERE name IN (selected companies)<br>TaskCreate × N per job<br>(url · company · title · output_dir · score · job_description_text · company_notes)"]
+        PR1["TeamCreate:  job-prep-YYYY-MM-DD<br>Query companies WHERE name IN (selected companies)<br>TaskCreate × N per job  (resume-only: generate_cover_letter = false)<br>(url · company · title · output_dir · score · job_description_text · company_notes)"]
         PR2["Spawn job-pipeline-worker × N  (Sonnet · all in parallel · max 5)"]
 
         subgraph WLOOP ["Per Worker — work loop  (repeats until no unclaimed tasks remain)"]
             W1["Claim task  →  TaskUpdate: status = in_progress"]
             W2["Spawn resume-tailor  (Opus)<br>→ ATS-targeted CV YAML<br>→ output_dir/{Name}_{Company}_Resume.yaml"]
             W3["rendercv render<br>→ output_dir/{Name}_{Company}_Resume.pdf"]
-            W4["Spawn cover-letter-creator  (Opus)<br>→ Cover Letter MD<br>→ output_dir/{Company}_Cover_Letter_CV.yaml  (rendercv-wrapped)"]
-            W5["rendercv render<br>→ output_dir/{Company}_Cover_Letter.pdf"]
-            W6["TaskUpdate: completed<br>DB UPDATE: status = 'applied'<br>SendMessage → lead  (output paths + status)"]
+            W4["Cover letter — ONLY if generate_cover_letter = true  (off by default)<br>Spawn cover-letter-creator  (Opus)<br>→ Cover Letter MD<br>→ output_dir/{Company}_Cover_Letter_CV.yaml  (rendercv-wrapped)"]
+            W5["rendercv render  (cover-letter pass only)<br>→ output_dir/{Company}_Cover_Letter.pdf"]
+            W6["TaskUpdate: completed<br>DB UPDATE: status = 'prepared'<br>SendMessage → lead  (output paths + status)"]
             WC{{"More<br>unclaimed<br>tasks?"}}
             WIDLE["Send lead:  idle — no tasks remaining"]
 
-            W1 --> W2 --> W3 --> W4 --> W5 --> W6 --> WC
+            W1 --> W2 --> W3
+            W3 -->|"default · resume only"| W6
+            W3 -.->|"if cover letters opted in"| W4 --> W5 --> W6
+            W6 --> WC
             WC -->|"yes"| W1
             WC -->|"no"| WIDLE
         end
 
         PR1 --> PR2 --> W1
-        WIDLE --> PDONE["job-preparer: all workers idle<br>SendMessage shutdown → each worker<br>TeamDelete<br>Write final-report.md"]
+        WIDLE --> PDONE["job-preparer: all workers idle<br>SendMessage shutdown → each worker<br>TeamDelete<br>Write final-report.md (resumes; cover letters 'not generated')<br>Return prepared_jobs handoff to job-search skill · stop"]
+        PDONE --> PCL{{"USER opts in to cover letters?<br>(job-search skill prompts · OFF by default)"}}
+        PCL -.->|"yes → phase:cover-letters"| PCL2["job-preparer re-runs the team for cover letters only<br>(generate_cover_letter = true · resume reused)<br>Update final-report.md with cover-letter PDFs"]
     end
 
     %% ─── Output ──────────────────────────────────────────────────────────────
-    OUT["OUTPUT  ·  job-data/output/YYYY-MM-DD/<br>  final-report.md  (rank · company · title · score · URL · status)<br>  {Company}/<br>    {Name}_{Company}_Resume.pdf<br>    {Company}_Cover_Letter.pdf<br>    {Company}_Cover_Letter.md"]
+    OUT["OUTPUT  ·  job-data/output/YYYY-MM-DD/<br>  final-report.md  (rank · company · title · score · URL · status)<br>  {Company}/<br>    {Name}_{Company}_Resume.pdf<br>    {Company}_Cover_Letter.pdf  (only if opted in)<br>    {Company}_Cover_Letter.md  (only if opted in)"]
 
     %% ─── Top-level flow: skills spawn orchestrators ──────────────────────────
     JS  -->|"1 · spawn"| SEEKER
@@ -83,11 +88,13 @@ flowchart TD
     S_DONE     -.->|"INSERT  status='new'"| DB
     EMAIL_ONLY -.->|"INSERT  status='new'"| DB
     SUB_RES    -.->|"UPSERT companies"| DB
+    SUB_ADZ    -.->|"UPSERT companies (canada_confirmed)"| DB
     DB         -.->|"read postings"| SC1
+    DB         -.->|"read scored postings"| SEL1
     DB         -.->|"read companies"| PR1
-    SC4        -.->|"UPDATE status='scored' · UPSERT companies"| DB
+    SC4        -.->|"UPDATE  status='scored'  (postings only)"| DB
     SEL3       -.->|"UPDATE  status='selected'"| DB
-    W6         -.->|"UPDATE  status='applied'"| DB
+    W6         -.->|"UPDATE  status='prepared'"| DB
 
     %% ─── Stage-to-stage flow ─────────────────────────────────────────────────
     SC4   --> SEL1

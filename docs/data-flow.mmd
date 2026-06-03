@@ -25,13 +25,13 @@ flowchart TD
     subgraph PREP ["Stage 4 — Prepare    (per job)"]
         direction LR
         T["resume-tailor<br>ATS-targeted CV"]
-        C["cover-letter-creator<br>Personalised to role + company"]
+        C["cover-letter-creator<br>Personalised to role + company<br>(optional · off by default)"]
     end
 
     subgraph OUT ["Output    (job-data/output/YYYY-MM-DD/)"]
         direction LR
         RP["Resume PDF"]
-        CL["Cover Letter PDF"]
+        CL["Cover Letter PDF<br>(only if opted in)"]
         FR["final-report.md"]
     end
 
@@ -43,11 +43,12 @@ flowchart TD
     RESUME  -->|"fit scoring context"| SC
     DISQ    -->|"score modifiers"| SC
     SC      --> SEL
-    SEL     --> T & C
+    SEL     --> T
+    SEL     -.->|"if opted in"| C
     RESUME  -->|"base document"| T
     RESUME  -->|"voice + experience"| C
     T       --> RP
-    C       --> CL
+    C       -.-> CL
     PREP    -->|"rank · URLs · status"| FR
 
     classDef resumeNode fill:#f4a261,stroke:#e76f51,color:#000
