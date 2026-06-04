@@ -18,6 +18,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from harness_db.embeddings import EMBED_DIM
+
 # Milliseconds SQLite waits on a locked DB before raising, so concurrent writers
 # (web app, TUI, pipeline) retry instead of failing immediately.
 _BUSY_TIMEOUT_MS = 5000
@@ -102,5 +104,39 @@ def make_engine(db_path: Path) -> Engine:
             pass
         finally:
             cursor.close()
+        _load_sqlite_vec(dbapi_connection)
 
     return engine
+
+
+def _load_sqlite_vec(dbapi_connection) -> None:
+    """Load the sqlite-vec extension and ensure ``postings_vec`` exists.
+
+    The semantic layer is a required part of the harness: callers are assumed to
+    meet the prerequisites (an extension-capable Python build plus the sqlite-vec
+    package), so a missing capability is a configuration error we surface loudly
+    rather than silently degrade. Only table creation is tolerant — a read-only
+    consumer still loads the extension and queries an existing ``postings_vec``,
+    it just can't create one.
+    """
+    import sqlite_vec  # required dependency; ImportError means prerequisites unmet
+
+    if not hasattr(dbapi_connection, "enable_load_extension"):
+        raise RuntimeError(
+            "This Python's sqlite3 was built without loadable-extension support, "
+            "which the harness requires. Rebuild Python with "
+            "--enable-loadable-sqlite-extensions (e.g. via "
+            'PYTHON_CONFIGURE_OPTS="--enable-loadable-sqlite-extensions" pyenv install).'
+        )
+
+    dbapi_connection.enable_load_extension(True)
+    sqlite_vec.load(dbapi_connection)
+    dbapi_connection.enable_load_extension(False)
+    try:
+        dbapi_connection.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS postings_vec USING vec0("
+            f"url TEXT PRIMARY KEY, embedding float[{EMBED_DIM}] distance_metric=cosine)"
+        )
+    except sqlite3.OperationalError:
+        # Read-only DB: extension is loaded for querying, but we can't CREATE.
+        pass

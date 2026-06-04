@@ -6,6 +6,12 @@ dependencies = [
     "sqlalchemy>=2.0",
     "pyyaml>=6",
     "typer>=0.12",
+    # Semantic dedup / similarity is a first-class part of the harness. Requires an
+    # extension-capable Python build (sqlite3 with --enable-loadable-sqlite-extensions)
+    # and a local Ollama serving the embedding model (`ollama pull qwen3-embedding:0.6b`).
+    "sqlite-vec>=0.1.6",
+    "ollama>=0.3",
+    "numpy>=1.26",
 ]
 
 [project.scripts]
