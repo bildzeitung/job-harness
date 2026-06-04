@@ -31,15 +31,18 @@ DUPLICATE_DISTANCE = 0.08
 
 
 def upsert_vector(engine: Engine, url: str, text: str) -> None:
-    """Embed ``text`` and store/replace the vector keyed by ``url``."""
+    """Embed ``text`` and store/replace the vector keyed by ``url``.
+
+    sqlite-vec's vec0 tables reject ``INSERT OR REPLACE`` on the primary key
+    (it raises a UNIQUE violation rather than replacing), so we delete then
+    insert in one transaction — the canonical vec0 upsert.
+    """
     emb = embed(text)
     raw = engine.raw_connection()
     try:
         cur = raw.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO postings_vec(url, embedding) VALUES (?, ?)",
-            (url, emb),
-        )
+        cur.execute("DELETE FROM postings_vec WHERE url = ?", (url,))
+        cur.execute("INSERT INTO postings_vec(url, embedding) VALUES (?, ?)", (url, emb))
         cur.close()
         raw.commit()
     finally:
