@@ -97,15 +97,25 @@ python -m scoring_module "$JOB_DATA_ROOT/jobs/scoring-batch-"*.json
 
 The script prints `[SCORED]` for each posting and `[BATCH DONE]` per file. It sets `status = 'scored'` and populates all score fields in the DB — no further action needed.
 
-## Step 4: Query Ranked Results from DB
+## Step 4: Query Ranked Results from DB (current batch only)
 
-With the venv from Step 3b still active, ask the `harness-db` CLI for the ranked top-5 as JSON — **do not hand-write SQL or rank in your head.** The CLI applies the canonical ranking (score desc, then fewest applicants first) and already excludes `selected`/`prepared`/`applied`/`skipped`:
+The top-5 you return must be the best of **the current batch** — the postings scored in this run — not the best of every posting ever scored. A "batch" corresponds to a scoring date, so scope the ranking to the most recent `scored_date` in the DB. Right after Step 3 this is today; if nothing needed scoring this run (Step 3 was skipped), it is the most recent prior batch, so the user still sees a real ranking rather than an empty list.
 
-```bash
-harness-db report --json --min-score 75 --top 5
+First, find the batch date. Use ToolSearch with `query: "select:mcp__sqlite__read_query"` to load the read tool if it is not already loaded, then:
+
+```sql
+SELECT MAX(scored_date) AS batch_date FROM postings WHERE scored_date IS NOT NULL
 ```
 
-(Equivalently `python -m harness_db.cli report --json --min-score 75 --top 5`.)
+Call the result `BATCH_DATE` (e.g. `2026-06-04`). If it is `NULL` (no posting has ever been scored), there is nothing to rank — return an empty ranked list to the caller and stop.
+
+With the venv from Step 3b still active, ask the `harness-db` CLI for the ranked top-5 of that batch as JSON — **do not hand-write SQL or rank in your head.** Pass `--scored-on BATCH_DATE` so the ranking, the counts, and `scored_below_min` are all scoped to the current batch. The CLI applies the canonical ranking (score desc, then fewest applicants first) and already excludes `selected`/`prepared`/`applied`/`skipped`:
+
+```bash
+harness-db report --json --min-score 75 --top 5 --scored-on "$BATCH_DATE"
+```
+
+(Equivalently `python -m harness_db.cli report --json --min-score 75 --top 5 --scored-on "$BATCH_DATE"`.)
 
 The JSON has the shape:
 
@@ -124,16 +134,16 @@ The JSON has the shape:
 
 ## Step 5: Select the Top 5
 
-`top` is already the top-5 postings with `final_score >= 75` (or all that pass, if fewer than 5), ranked best-fit first. `scored_below_min` is the count that scored below 75 — report the count, not the list. Hand these to Step 5b for the return.
+`top` is already the top-5 postings **from the current batch** with `final_score >= 75` (or all that pass, if fewer than 5), ranked best-fit first. `scored_below_min` is the count in this batch that scored below 75 — report the count, not the list. Hand these to Step 5b for the return.
 
 (`job_description_text` is not in this payload; you re-query it for the chosen URLs in Step 6.)
 
 ## Step 5b: Return the Ranked List to the Caller (end of `phase: score`)
 
-**Do not ask the user anything.** This is the end of `phase: score`. Return the ranked top-5 to your caller (the skill) as your final message, in this exact format so the caller can present it and map the user's choice back to URLs:
+**Do not ask the user anything.** This is the end of `phase: score`. Return the ranked top-5 **for the current batch (`BATCH_DATE`)** to your caller (the skill) as your final message, in this exact format so the caller can present it and map the user's choice back to URLs:
 
 ```
-PHASE: score — ranked candidates
+PHASE: score — ranked candidates (batch BATCH_DATE)
 
 | Rank | Company | Title | Score | Platform | Posted | URL |
 |------|---------|-------|-------|----------|--------|-----|
