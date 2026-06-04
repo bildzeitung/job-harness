@@ -33,8 +33,7 @@ _MAX_CHARS = 8000
 # (Qwen3-Embedding is instruction-tuned; an asymmetric query/document split is
 # for retrieval, not for "are these the same posting?").
 _INSTRUCTION = (
-    "Instruct: Represent this job posting for duplicate detection and "
-    "similarity search.\nText: "
+    "Instruct: Represent this job posting for duplicate detection and similarity search.\nText: "
 )
 
 
