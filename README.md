@@ -18,15 +18,16 @@ An AI harness that searches for jobs. Currently, it searches:
 
 ## Setup
 
-Make sure that your Python v3.14.5 has loadable extension support for sqlite3 enabled.
-
-If:
+The harness's semantic dedup/similarity layer uses
+[sqlite-vec](https://github.com/asg017/sqlite-vec), so your Python v3.14.5 must
+have loadable extension support for sqlite3 enabled. `init.sh` verifies this
+automatically and stops with guidance if it is missing; to check by hand:
 
 ```bash
 ; python -c 'import sqlite3; print(hasattr(sqlite3.connect(":memory:"), "enable_load_extension"))'
 ```
 
-does not return `True`, then rebuild Python with:
+If that does not return `True`, rebuild Python with:
 
 ```
 ; PYTHON_CONFIGURE_OPTS="${PYTHON_CONFIGURE_OPTS} --enable-loadable-sqlite-extensions" \
@@ -34,7 +35,7 @@ does not return `True`, then rebuild Python with:
 ```
 
 * for Python environment, run: `init.sh`
-* for 3rd party tools (rtk), run: `3rdparty-install.sh`
+* for 3rd party tools (rtk, plus Ollama and the `qwen3-embedding:0.6b` model that powers the semantic layer), run: `3rdparty-install.sh`
 * also, `mkdir ~/job-data` (this is your job search directory)
 
 ## Configure
