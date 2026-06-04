@@ -18,6 +18,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from harness_db.embeddings import EMBED_DIM
+
 # Milliseconds SQLite waits on a locked DB before raising, so concurrent writers
 # (web app, TUI, pipeline) retry instead of failing immediately.
 _BUSY_TIMEOUT_MS = 5000
@@ -102,5 +104,32 @@ def make_engine(db_path: Path) -> Engine:
             pass
         finally:
             cursor.close()
+        _load_sqlite_vec(dbapi_connection)
 
     return engine
+
+
+def _load_sqlite_vec(dbapi_connection) -> None:
+    """Best-effort: load the sqlite-vec extension and ensure ``postings_vec`` exists.
+
+    Optional and fully guarded — a harness installed without the ``semantic``
+    extra (no ``sqlite_vec``), a Python built without extension loading, or a
+    read-only DB all fall through silently and leave existing behaviour untouched.
+    The vector table is a sidecar keyed by ``Posting.url``; it carries no foreign
+    key, so a missing row simply means "not embedded yet".
+    """
+    try:
+        import sqlite_vec
+    except ImportError:
+        return
+    try:
+        dbapi_connection.enable_load_extension(True)
+        sqlite_vec.load(dbapi_connection)
+        dbapi_connection.enable_load_extension(False)
+        dbapi_connection.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS postings_vec USING vec0("
+            f"url TEXT PRIMARY KEY, embedding float[{EMBED_DIM}] distance_metric=cosine)"
+        )
+    except (sqlite3.OperationalError, AttributeError):
+        # Read-only DB, or sqlite3 compiled without enable_load_extension — skip.
+        pass

@@ -19,6 +19,10 @@ packages = ["harness_db"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "nox>=2024.3.2", "ruff>=0.6"]
+# Semantic dedup / similarity. Optional: without it, make_engine skips the
+# vector table and the rest of the harness is unaffected. Requires a local
+# Ollama serving the embedding model (`ollama pull qwen3-embedding:0.6b`).
+semantic = ["sqlite-vec>=0.1.6", "ollama>=0.3", "numpy>=1.26"]
 
 [build-system]
 requires = ["hatchling"]
