@@ -19,6 +19,18 @@ from scoring_module.scorer import (
     score_batch,
 )
 
+
+@pytest.fixture(autouse=True)
+def _no_real_embeddings(monkeypatch):
+    """Keep tests hermetic: no real Ollama-backed dedup/indexing by default.
+
+    Default is "no duplicate, indexing is a no-op"; the reuse test overrides
+    scoring_module.scorer.find_duplicate to return a hit.
+    """
+    monkeypatch.setattr("scoring_module.scorer.find_duplicate", lambda *a, **k: None)
+    monkeypatch.setattr("scoring_module.scorer.upsert_vector", lambda *a, **k: None)
+
+
 # ---------------------------------------------------------------------------
 # _age_modifier — boundary tests for every branch
 # ---------------------------------------------------------------------------
@@ -549,3 +561,80 @@ def test_score_batch_returns_count_on_partial_failure(tmp_path):
         count = score_batch(str(batch_file))
 
     assert count == 2  # 1 failed, 2 succeeded
+
+
+def test_score_batch_reuses_duplicate_score(tmp_path):
+    """A posting whose JD near-duplicates an already-scored posting reuses that
+    verdict and skips the LLM call entirely."""
+    from harness_db.models import Base, Posting, make_engine
+    from sqlalchemy.orm import Session
+
+    db_path = tmp_path / "test.db"
+    engine = make_engine(db_path)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as s:
+        # Already-scored canonical posting (the duplicate target).
+        s.add(
+            Posting(
+                url="https://example.com/job/canonical",
+                title="Principal Engineer",
+                company="Acme Corp",
+                status="scored",
+                base_score=80,
+                modifier=0,
+                final_score=80,
+                scored_date="2026-01-01",
+                scoring_notes="Strong fit",
+                dimension_scores=json.dumps({"technical_fit": 8}),
+                job_description_text="Canonical " + "x" * 400,
+            )
+        )
+        # The repost we will score (different URL, same job).
+        s.add(
+            Posting(
+                url="https://example.com/job/repost",
+                title="Principal Engineer",
+                company="Acme Corp",
+                status="new",
+            )
+        )
+        s.commit()
+
+    postings = [
+        {
+            "url": "https://example.com/job/repost",
+            "title": "Principal Engineer",
+            "company": "Acme Corp",
+            "platform": "indeed",
+            "post_date": None,
+            "applicant_count": None,
+            "description_summary": "A role",
+            "job_description_text": "Repost " + "y" * 400,
+        }
+    ]
+    batch_file = tmp_path / "batch.json"
+    batch_file.write_text(json.dumps(postings))
+
+    client = _api_response(base_score=10)  # would yield 10 if the LLM were consulted
+
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+        patch(
+            "scoring_module.scorer.find_duplicate",
+            return_value=("https://example.com/job/canonical", 0.05),
+        ),
+    ):
+        count = score_batch(str(batch_file))
+
+    assert count == 1
+    client.messages.create.assert_not_called()  # reused, no LLM call
+
+    with Session(engine) as s:
+        repost = s.get(Posting, "https://example.com/job/repost")
+    assert repost.status == "scored"
+    assert repost.base_score == 80  # reused canonical's 80, not the mock's 10
+    assert repost.final_score == 80
+    assert repost.scoring_notes.startswith("[reused from near-duplicate")
