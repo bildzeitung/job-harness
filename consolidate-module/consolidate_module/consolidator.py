@@ -1,7 +1,8 @@
 """Consolidate per-platform job-seeker temp files into the harness DB.
 
 Reads `$JOB_DATA_ROOT/jobs/{platform}-{date}.json` for each known platform,
-deduplicates against the postings already in SQLite, writes the audit log
+deduplicates against the postings already in SQLite (by URL, then by semantic
+near-duplicate to catch cross-platform reposts), writes the audit log
 `$JOB_DATA_ROOT/jobs/search-{date}.json`, and inserts new rows
 (company → posting → company_posting) in a single transaction.
 """
@@ -15,11 +16,21 @@ from pathlib import Path
 from typing import Any
 
 from harness_db.models import Company, CompanyPosting, Posting, make_engine
+from harness_db.vectors import find_duplicate, upsert_vector
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 PLATFORMS = ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "lever", "research"]
+
+# Minimum characters of posting text before a semantic-similarity comparison is
+# trustworthy. Below this (e.g. title only) we skip dedup rather than risk a
+# spurious match, and just keep the posting.
+_MIN_DEDUP_CHARS = 200
+
+
+def _posting_text(p: dict[str, Any]) -> str:
+    return (p.get("job_description_text") or p.get("description_summary") or "").strip()
 
 
 def _resolve_paths() -> tuple[Path, Path]:
@@ -80,6 +91,46 @@ def _dedup(
             seen.add(url)
             deduped.append(p)
     return deduped, removed_existing, removed_within
+
+
+def _semantic_dedup(
+    engine,
+    postings: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Drop postings that are near-duplicates of an already-indexed posting.
+
+    Catches cross-platform reposts that survive URL dedup (same job, different
+    URL). Each kept posting is embedded into `postings_vec` so later postings in
+    this batch — and future runs — dedup against it; reposts are not indexed, so
+    they collapse onto the canonical posting. Best-effort per posting: if the
+    embedding backend is unavailable we keep the posting rather than lose it.
+    """
+    kept: list[dict[str, Any]] = []
+    removed = 0
+    for p in postings:
+        text = _posting_text(p)
+        if len(text) < _MIN_DEDUP_CHARS:
+            kept.append(p)
+            continue
+        try:
+            dup = find_duplicate(engine, text, exclude_url=p.get("url"))
+        except Exception as exc:
+            print(f"[WARN] semantic dedup unavailable for {p.get('url')}: {exc}", file=sys.stderr)
+            kept.append(p)
+            continue
+        if dup is not None:
+            print(
+                f"[SEMANTIC DUP] {p.get('url')} ~ {dup[0]} (cosine {dup[1]:.3f}) — skipping repost",
+                flush=True,
+            )
+            removed += 1
+            continue
+        try:
+            upsert_vector(engine, p["url"], text)
+        except Exception as exc:
+            print(f"[WARN] could not index {p.get('url')}: {exc}", file=sys.stderr)
+        kept.append(p)
+    return kept, removed
 
 
 def _write_audit_log(
@@ -191,6 +242,7 @@ def consolidate(batch_date: str) -> int:
         existing_urls = {row[0] for row in session.execute(select(Posting.url)).all()}
 
     deduped, removed_existing, removed_within = _dedup(merged, existing_urls)
+    deduped, removed_semantic = _semantic_dedup(engine, deduped)
 
     audit_path = jobs_dir / f"search-{batch_date}.json"
     _write_audit_log(audit_path, batch_date, by_platform, deduped)
@@ -206,6 +258,7 @@ def consolidate(batch_date: str) -> int:
     print(f"Total raw:         {len(merged)}", flush=True)
     print(f"Removed (in DB):   {removed_existing}", flush=True)
     print(f"Removed (in-batch):{removed_within}", flush=True)
+    print(f"Removed (semantic):{removed_semantic}", flush=True)
     print(f"New inserted:      {inserted}", flush=True)
     print(f"Audit log:         {audit_path}", flush=True)
     return inserted

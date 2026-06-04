@@ -11,9 +11,22 @@ from consolidate_module.consolidator import (
     PLATFORMS,
     _dedup,
     _load_platform_file,
+    _semantic_dedup,
     _write_audit_log,
     consolidate,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_real_embeddings(monkeypatch):
+    """Keep tests hermetic: never call the real Ollama-backed vector helpers.
+
+    Default is "no semantic duplicate, indexing is a no-op"; tests that exercise
+    semantic dedup override consolidator.find_duplicate explicitly.
+    """
+    monkeypatch.setattr("consolidate_module.consolidator.find_duplicate", lambda *a, **k: None)
+    monkeypatch.setattr("consolidate_module.consolidator.upsert_vector", lambda *a, **k: None)
+
 
 # ── _load_platform_file ────────────────────────────────────────────────────────
 
@@ -72,6 +85,66 @@ def test_dedup_keeps_first_occurrence():
     raw = [{"url": "a", "title": "first"}, {"url": "a", "title": "second"}]
     deduped, _, _ = _dedup(raw, existing_urls=set())
     assert deduped == [{"url": "a", "title": "first"}]
+
+
+# ── _semantic_dedup ───────────────────────────────────────────────────────────
+
+
+def test_semantic_dedup_drops_repost(monkeypatch):
+    import consolidate_module.consolidator as c
+
+    def fake_find_duplicate(engine, text, exclude_url=None):
+        # The second posting is a near-duplicate of the first; the first is novel.
+        return ("https://x/1", 0.04) if "second" in text else None
+
+    indexed: list[str] = []
+    monkeypatch.setattr(c, "find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr(c, "upsert_vector", lambda engine, url, text: indexed.append(url))
+
+    postings = [
+        {"url": "https://x/1", "job_description_text": "first role " + "a" * 300},
+        {"url": "https://x/2", "job_description_text": "second role " + "b" * 300},
+    ]
+    kept, removed = _semantic_dedup(engine=object(), postings=postings)
+
+    assert removed == 1
+    assert [p["url"] for p in kept] == ["https://x/1"]
+    assert indexed == ["https://x/1"]  # only the kept, novel posting is indexed
+
+
+def test_semantic_dedup_skips_thin_text(monkeypatch):
+    import consolidate_module.consolidator as c
+
+    called = False
+
+    def fake_find_duplicate(*a, **k):
+        nonlocal called
+        called = True
+        return None
+
+    monkeypatch.setattr(c, "find_duplicate", fake_find_duplicate)
+
+    kept, removed = _semantic_dedup(object(), [{"url": "u", "title": "Engineer"}])
+
+    assert removed == 0
+    assert [p["url"] for p in kept] == ["u"]
+    assert called is False  # too little text to embed — no backend call
+
+
+def test_semantic_dedup_keeps_posting_when_backend_errors(monkeypatch):
+    import consolidate_module.consolidator as c
+
+    def boom(*a, **k):
+        raise RuntimeError("ollama down")
+
+    monkeypatch.setattr(c, "find_duplicate", boom)
+
+    kept, removed = _semantic_dedup(
+        object(), [{"url": "u", "job_description_text": "long role " + "x" * 300}]
+    )
+
+    assert removed == 0
+    assert [p["url"] for p in kept] == ["u"]  # degrade gracefully, never lose a posting
 
 
 # ── _write_audit_log ──────────────────────────────────────────────────────────

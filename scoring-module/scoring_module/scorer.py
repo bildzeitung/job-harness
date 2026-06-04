@@ -17,6 +17,7 @@ from harness_db.config import get_db_path
 from harness_db.disqualifiers import load_disqualifiers
 from harness_db.models import Posting, make_engine
 from harness_db.profile import load_candidate_summary
+from harness_db.vectors import find_duplicate, upsert_vector
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
@@ -33,6 +34,9 @@ _DB_WRITE_LOCK = threading.Lock()
 JD_FETCH_MIN_LENGTH = 500
 JD_TRUNCATE_LENGTH = 8000
 JD_TRUNCATE_WARN_THRESHOLD = 7900
+# Minimum characters of posting text before a semantic-similarity comparison is
+# trustworthy (mirrors the consolidator). Below this we score normally.
+_MIN_DEDUP_CHARS = 200
 
 
 def _render_disqualifiers(config: dict[str, Any]) -> str:
@@ -178,6 +182,101 @@ def _parse_json_response(text: str) -> dict[str, Any]:
     return json.loads(stripped.strip())
 
 
+def _posting_text(posting: dict[str, Any]) -> str:
+    return (posting.get("job_description_text") or posting.get("description_summary") or "").strip()
+
+
+def _reused_disqualifier(dup: Posting) -> int:
+    """Recover the disqualifier component of a scored posting's stored modifier.
+
+    The DB stores only the combined modifier (disqualifier + age + competition,
+    minus a fetch-failure penalty). Strip the age/competition terms — and add back
+    the fetch penalty if it was applied — to isolate the LLM's disqualifier
+    judgement, which is the only modifier component that transfers to a duplicate.
+    """
+    mod = (
+        (dup.modifier or 0)
+        - _age_modifier(dup.post_date)
+        - _competition_modifier(dup.applicant_count)
+    )
+    if (dup.scoring_notes or "").startswith("[WebFetch failed"):
+        mod += 5
+    return mod
+
+
+def _find_scored_duplicate(engine, posting: dict[str, Any]) -> tuple[Posting, float] | None:
+    """Return a (scored Posting, cosine distance) near-duplicate of `posting`, or None.
+
+    Best-effort: a lookup failure (e.g. embedding backend down) falls back to
+    normal scoring. Matches against unscored postings are ignored — there is
+    nothing to reuse.
+    """
+    text = _posting_text(posting)
+    if len(text) < _MIN_DEDUP_CHARS:
+        return None
+    try:
+        hit = find_duplicate(engine, text, exclude_url=posting.get("url"))
+    except Exception as exc:
+        print(
+            f"[WARN] duplicate lookup unavailable for {posting.get('url')}: {exc}", file=sys.stderr
+        )
+        return None
+    if hit is None:
+        return None
+    dup_url, dist = hit
+    with Session(engine) as session:
+        dup = session.get(Posting, dup_url)
+    if dup is None or dup.base_score is None or dup.final_score is None:
+        return None
+    return dup, dist
+
+
+def _reuse_result(posting: dict[str, Any], dup: Posting, dist: float) -> dict[str, Any]:
+    """Build a score result for `posting` by reusing a near-duplicate's verdict.
+
+    The LLM judgement (base score, dimension scores, notes) is copied; the
+    age/competition modifiers are recomputed from THIS posting so a fresher repost
+    isn't penalised for the original's age.
+    """
+    base_score = dup.base_score or 0
+    modifier = (
+        _reused_disqualifier(dup)
+        + _age_modifier(posting.get("post_date"))
+        + _competition_modifier(posting.get("applicant_count"))
+    )
+    final_score = max(1, min(100, base_score + modifier))
+    try:
+        dimension_scores = json.loads(dup.dimension_scores) if dup.dimension_scores else {}
+    except (json.JSONDecodeError, TypeError):
+        dimension_scores = {}
+    notes = f"[reused from near-duplicate {dup.url} · cosine {dist:.3f}] {dup.scoring_notes or ''}".strip()
+    return {
+        "title": posting.get("title", ""),
+        "company": posting.get("company", ""),
+        "url": posting.get("url", ""),
+        "platform": posting.get("platform", ""),
+        "post_date": posting.get("post_date"),
+        "applicant_count": posting.get("applicant_count"),
+        "base_score": base_score,
+        "modifier": modifier,
+        "final_score": final_score,
+        "scoring_notes": notes,
+        "dimension_scores": dimension_scores,
+        "job_description_text": _posting_text(posting),
+    }
+
+
+def _index_vector(engine, result: dict[str, Any]) -> None:
+    """Best-effort: add a freshly-scored posting's vector to `postings_vec`."""
+    text = (result.get("job_description_text") or "").strip()
+    if len(text) < _MIN_DEDUP_CHARS:
+        return
+    try:
+        upsert_vector(engine, result["url"], text)
+    except Exception as exc:
+        print(f"[WARN] could not index {result.get('url')}: {exc}", file=sys.stderr)
+
+
 def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str, Any]:
     url = posting.get("url", "")
     title = posting.get("title", "")
@@ -313,11 +412,22 @@ def score_batch(batch_file: str) -> int:
     engine = make_engine(db_path)
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
-        result = _score_one(client, posting)
+        dup = _find_scored_duplicate(engine, posting)
+        if dup is not None:
+            dup_posting, dist = dup
+            result = _reuse_result(posting, dup_posting, dist)
+            reused = True
+        else:
+            result = _score_one(client, posting)
+            reused = False
         _save_report(result, reports_dir)
         _update_db(engine, result)
+        if not reused:
+            # Reposts collapse onto the canonical posting, so only index fresh scores.
+            _index_vector(engine, result)
         print(
-            f"[SCORED] {result['company']} — {result['title']}: {result['final_score']}/100",
+            f"[{'REUSED' if reused else 'SCORED'}] {result['company']} — "
+            f"{result['title']}: {result['final_score']}/100",
             flush=True,
         )
         return result
