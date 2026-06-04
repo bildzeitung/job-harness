@@ -6,6 +6,12 @@ dependencies = [
     "sqlalchemy>=2.0",
     "pyyaml>=6",
     "typer>=0.12",
+    # Semantic dedup / similarity is a first-class part of the harness. Requires an
+    # extension-capable Python build (sqlite3 with --enable-loadable-sqlite-extensions)
+    # and a local Ollama serving the embedding model (`ollama pull qwen3-embedding:0.6b`).
+    "sqlite-vec>=0.1.6",
+    "ollama>=0.3",
+    "numpy>=1.26",
 ]
 
 [project.scripts]
@@ -19,12 +25,6 @@ packages = ["harness_db"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "nox>=2024.3.2", "ruff>=0.6"]
-# Semantic dedup / similarity. Optional: without it, make_engine skips the
-# vector table and the rest of the harness is unaffected. Requires a local
-# Ollama serving the embedding model (`ollama pull qwen3-embedding:0.6b`).
-# pysqlite3-binary bundles a SQLite with loadable-extension support, used as the
-# driver when the stdlib sqlite3 lacks it (common on CPython 3.14 builds).
-semantic = ["sqlite-vec>=0.1.6", "ollama>=0.3", "numpy>=1.26", "pysqlite3-binary>=0.5"]
 
 [build-system]
 requires = ["hatchling"]

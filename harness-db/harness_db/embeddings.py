@@ -7,9 +7,9 @@ the same ``postings.db``. Both sides of every comparison are embedded with the
 near-duplicate detection, where the "query" and the "document" are both job
 postings.
 
-Only the module-level constants are imported on the hot path of the core DB
-modules; ``ollama`` and ``numpy`` are imported lazily inside ``embed`` so the
-harness still installs and runs without the optional ``semantic`` extra.
+``ollama`` and ``numpy`` are imported lazily inside ``embed`` so that merely
+importing this module (e.g. for the EMBED_DIM constant in models.py) doesn't pull
+the embedding stack until an embedding is actually requested.
 """
 
 from __future__ import annotations

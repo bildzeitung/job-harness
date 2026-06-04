@@ -24,18 +24,6 @@ from harness_db.embeddings import EMBED_DIM
 # (web app, TUI, pipeline) retry instead of failing immediately.
 _BUSY_TIMEOUT_MS = 5000
 
-# Exceptions we treat as "vector layer unavailable, carry on" when loading
-# sqlite-vec. AttributeError covers a stdlib sqlite3 with no enable_load_extension;
-# OperationalError covers a read-only DB. pysqlite3 defines its own OperationalError
-# class distinct from the stdlib one, so include it when present.
-_VEC_SKIP_EXC: tuple[type[Exception], ...] = (sqlite3.OperationalError, AttributeError)
-try:
-    from pysqlite3 import dbapi2 as _pysqlite3_dbapi
-
-    _VEC_SKIP_EXC += (_pysqlite3_dbapi.OperationalError,)
-except ImportError:
-    pass
-
 
 class Base(DeclarativeBase):
     pass
@@ -100,33 +88,8 @@ class CompanyPosting(Base):
     __table_args__ = (Index("ix_company_postings_company_name", "company_name"),)
 
 
-def _extension_capable_sqlite_module():
-    """Return a DBAPI module whose connections can load SQLite extensions, or None.
-
-    Many Python builds (e.g. CPython 3.14 here) ship a stdlib ``sqlite3`` compiled
-    without ``--enable-loadable-sqlite-extensions``, so ``enable_load_extension`` is
-    absent and sqlite-vec cannot be loaded. ``pysqlite3-binary`` bundles its own
-    SQLite with extensions enabled and is a drop-in DBAPI. We only reach for it when
-    the stdlib can't do the job and it's installed (it ships in the ``semantic``
-    extra); otherwise return None and let SQLAlchemy use the stdlib driver, leaving
-    non-semantic installs byte-for-byte unchanged.
-    """
-    if hasattr(sqlite3.Connection, "enable_load_extension"):
-        return None
-    try:
-        from pysqlite3 import dbapi2 as pysqlite3_dbapi
-    except ImportError:
-        return None
-    return pysqlite3_dbapi
-
-
 def make_engine(db_path: Path) -> Engine:
-    module = _extension_capable_sqlite_module()
-    engine = (
-        create_engine(f"sqlite:///{db_path}", echo=False, module=module)
-        if module is not None
-        else create_engine(f"sqlite:///{db_path}", echo=False)
-    )
+    engine = create_engine(f"sqlite:///{db_path}", echo=False)
 
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_connection, connection_record):
@@ -147,26 +110,33 @@ def make_engine(db_path: Path) -> Engine:
 
 
 def _load_sqlite_vec(dbapi_connection) -> None:
-    """Best-effort: load the sqlite-vec extension and ensure ``postings_vec`` exists.
+    """Load the sqlite-vec extension and ensure ``postings_vec`` exists.
 
-    Optional and fully guarded — a harness installed without the ``semantic``
-    extra (no ``sqlite_vec``), a Python built without extension loading, or a
-    read-only DB all fall through silently and leave existing behaviour untouched.
-    The vector table is a sidecar keyed by ``Posting.url``; it carries no foreign
-    key, so a missing row simply means "not embedded yet".
+    The semantic layer is a required part of the harness: callers are assumed to
+    meet the prerequisites (an extension-capable Python build plus the sqlite-vec
+    package), so a missing capability is a configuration error we surface loudly
+    rather than silently degrade. Only table creation is tolerant — a read-only
+    consumer still loads the extension and queries an existing ``postings_vec``,
+    it just can't create one.
     """
+    import sqlite_vec  # required dependency; ImportError means prerequisites unmet
+
+    if not hasattr(dbapi_connection, "enable_load_extension"):
+        raise RuntimeError(
+            "This Python's sqlite3 was built without loadable-extension support, "
+            "which the harness requires. Rebuild Python with "
+            "--enable-loadable-sqlite-extensions (e.g. via "
+            'PYTHON_CONFIGURE_OPTS="--enable-loadable-sqlite-extensions" pyenv install).'
+        )
+
+    dbapi_connection.enable_load_extension(True)
+    sqlite_vec.load(dbapi_connection)
+    dbapi_connection.enable_load_extension(False)
     try:
-        import sqlite_vec
-    except ImportError:
-        return
-    try:
-        dbapi_connection.enable_load_extension(True)
-        sqlite_vec.load(dbapi_connection)
-        dbapi_connection.enable_load_extension(False)
         dbapi_connection.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS postings_vec USING vec0("
             f"url TEXT PRIMARY KEY, embedding float[{EMBED_DIM}] distance_metric=cosine)"
         )
-    except _VEC_SKIP_EXC:
-        # Read-only DB, or sqlite3 compiled without enable_load_extension — skip.
+    except sqlite3.OperationalError:
+        # Read-only DB: extension is loaded for querying, but we can't CREATE.
         pass

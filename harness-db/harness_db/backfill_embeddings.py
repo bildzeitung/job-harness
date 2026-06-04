@@ -1,6 +1,6 @@
 """One-off: embed existing postings into the ``postings_vec`` table.
 
-Run after installing the ``semantic`` extra and pulling the Ollama model::
+Run after installing the harness and pulling the Ollama model::
 
     ollama pull qwen3-embedding:0.6b
     python -m harness_db.backfill_embeddings

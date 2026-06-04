@@ -1,9 +1,9 @@
 """Read/write helpers for the ``postings_vec`` sqlite-vec table.
 
 The extension is loaded and the table created by ``harness_db.models.make_engine``
-(best-effort, in the connection event), so every connection from that engine can
-query vectors. These helpers take a raw DBAPI cursor because sqlite-vec's
-``MATCH`` / ``k =`` KNN syntax is driver-level SQL, not ORM-expressible.
+in the connection event, so every connection from that engine can query vectors.
+These helpers take a raw DBAPI cursor because sqlite-vec's ``MATCH`` / ``k =`` KNN
+syntax is driver-level SQL, not ORM-expressible.
 
 Distances are **cosine** (table created with ``distance_metric=cosine``): 0.0 is
 identical, ~1.0 is unrelated, 2.0 is opposite.

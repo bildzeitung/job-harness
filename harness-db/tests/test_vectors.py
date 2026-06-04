@@ -1,8 +1,8 @@
 """Vector helper tests.
 
-Needs the ``sqlite_vec`` extension (skipped if absent) but NOT Ollama or a GPU:
-``vectors.embed`` is monkeypatched to deterministic vectors so the KNN /
-duplicate logic is exercised in isolation from the embedding model.
+Exercises the KNN / duplicate logic against a real sqlite-vec table but with
+``vectors.embed`` monkeypatched to deterministic vectors, so no Ollama or GPU is
+needed. sqlite-vec is a required dependency, so there is nothing to skip.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ def _vec(*nonzero: tuple[int, float]) -> bytes:
 
 @pytest.fixture()
 def engine(tmp_path, monkeypatch):
-    pytest.importorskip("sqlite_vec")
     eng = make_engine(tmp_path / "postings.db")
     # Map the text passed to upsert/nearest onto a fixed vector. 'a' and 'b' are
     # near-identical (tiny perturbation); 'c' is orthogonal to both.
@@ -60,6 +59,18 @@ def test_find_duplicate_hits_and_misses(engine):
 
     # 'c' against everything-but-itself is orthogonal -> no duplicate.
     assert vectors.find_duplicate(engine, "c", exclude_url="u-c") is None
+
+
+def test_missing_extension_support_raises_clear_error():
+    """The semantic layer is mandatory: an extension-less sqlite3 must fail loudly."""
+    from harness_db import models
+
+    class _FakeConn:  # deliberately lacks enable_load_extension
+        def execute(self, *args):
+            raise AssertionError("should not reach CREATE without extension support")
+
+    with pytest.raises(RuntimeError, match="loadable-extension"):
+        models._load_sqlite_vec(_FakeConn())
 
 
 def test_upsert_replaces_and_delete_removes(engine):
