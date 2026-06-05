@@ -13,14 +13,15 @@ flowchart TD
         SUB_IND["job-seeker-indeed<br>Indeed MCP"]
         SUB_ZIP["job-seeker-ziprecruiter<br>ZipRecruiter MCP"]
         SUB_ADZ["job-seeker-adzuna<br>Adzuna Canada REST API"]
-        SUB_GH["job-seeker-greenhouse<br>Greenhouse · Lever public APIs"]
-        SUB_RES["job-seeker-research<br>Wellfound · Ashby · funded startups<br>→ UPSERT companies (notes · remote/Canada confirmed)"]
+        SUB_GH["job-seeker-greenhouse<br>Greenhouse · Lever · Ashby public ATS APIs"]
+        SUB_REM["job-seeker-remotive<br>Remotive remote-jobs API"]
+        SUB_RES["job-seeker-research<br>Wellfound · funded startups · niche boards<br>→ UPSERT companies (notes · remote/Canada confirmed)"]
 
         S_DONE["consolidate_module  (Python)<br>Merge per-platform temp files  ·  deduplicate against existing DB URLs<br>Audit log → jobs/search-YYYY-MM-DD.json<br>INSERT OR IGNORE postings (status = 'new')<br>Create companies row + company_postings link  (ON CONFLICT DO NOTHING)"]
 
         SEEKER -->|"conditional on probe"| SUB_LI & SUB_EM & SUB_IND & SUB_ZIP
-        SEEKER -->|"always · parallel"| SUB_ADZ & SUB_GH & SUB_RES
-        SUB_LI & SUB_EM & SUB_IND & SUB_ZIP & SUB_ADZ & SUB_GH & SUB_RES --> S_DONE
+        SEEKER -->|"always · parallel"| SUB_ADZ & SUB_GH & SUB_REM & SUB_RES
+        SUB_LI & SUB_EM & SUB_IND & SUB_ZIP & SUB_ADZ & SUB_GH & SUB_REM & SUB_RES --> S_DONE
     end
 
     %% ─── Email-only path (bypasses SEEK orchestrator) ────────────────────────

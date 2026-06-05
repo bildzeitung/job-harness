@@ -3,6 +3,8 @@
 # adzuna     : keyword search driven by candidate-summary target_titles.
 # greenhouse : Greenhouse public board API, one board per slug.
 # lever      : Lever public postings API, one board per slug.
+# ashby      : Ashby public board API, one board per slug (the jobs.ashbyhq.com/{slug} id).
+# remotive   : Remotive remote-jobs API, keyword search driven by target_titles.
 
 adzuna:
   results_per_page: 50
@@ -75,3 +77,23 @@ lever:
     - cohere
     - scale
     - weights-biases
+
+# Ashby slugs are the board id in jobs.ashbyhq.com/{slug}. Verified to return
+# postings; companies already covered by the greenhouse/lever lists are left out
+# to avoid cross-platform double-listing.
+ashby:
+  slugs:
+    - linear
+    - posthog
+    - vanta
+    - replit
+    - deel
+    - runway
+    - watershed
+    - supabase
+    - render
+    - openai
+
+remotive:
+  # Max results per target-title query (Remotive caps at the board size).
+  limit: 50

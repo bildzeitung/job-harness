@@ -21,7 +21,17 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-PLATFORMS = ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "lever", "research"]
+PLATFORMS = [
+    "linkedin",
+    "indeed",
+    "adzuna",
+    "ziprecruiter",
+    "greenhouse",
+    "lever",
+    "ashby",
+    "remotive",
+    "research",
+]
 
 # Minimum characters of posting text before a semantic-similarity comparison is
 # trustworthy. Below this (e.g. title only) we skip dedup rather than risk a

@@ -8,28 +8,28 @@ Run the complete job search pipeline.
 
 ## Step 0: Determine Active Sources
 
-The 6 available sources are: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `greenhouse`, `research`
+The 7 available sources are: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `greenhouse`, `remotive`, `research`
 
 **If args were provided with the skill invocation:**
 - `--skip=<csv>` → disable those sources, run all others (e.g. `--skip=research`)
 - `--only=<csv>` → run only those sources, disable all others (e.g. `--only=linkedin,adzuna`)
 - Compute `enabled_sources` from the args and skip to writing the config file below.
 
-**If no args were provided:** ask the user, in plain text, which sources to **skip** as a comma-separated list. Do **not** use AskUserQuestion. Wait for the reply before continuing. An empty reply (or "none") means run all 6.
+**If no args were provided:** ask the user, in plain text, which sources to **skip** as a comma-separated list. Do **not** use AskUserQuestion. Wait for the reply before continuing. An empty reply (or "none") means run all 7.
 
 Ask:
 
 > Which sources should be skipped this run? Reply with a comma-separated list, or leave empty / say "none" to run all.
-> Available: `linkedin` (MCP, needs active browser session), `indeed` (MCP), `adzuna` (REST API), `ziprecruiter` (MCP), `greenhouse` (Greenhouse.io + Lever.co public APIs), `research` (non-job-board: Wellfound, Ashby, funded startups, niche boards).
+> Available: `linkedin` (MCP, needs active browser session), `indeed` (MCP), `adzuna` (REST API), `ziprecruiter` (MCP), `greenhouse` (Greenhouse.io + Lever.co + Ashby public ATS APIs), `remotive` (Remotive remote-jobs API), `research` (non-job-board: Wellfound, funded startups, niche boards).
 
-Parse the reply: split on commas, trim whitespace, lowercase, and keep only values matching the 6 known source names (ignore anything unrecognized). Compute `enabled_sources` as all 6 minus the parsed skip list.
+Parse the reply: split on commas, trim whitespace, lowercase, and keep only values matching the 7 known source names (ignore anything unrecognized). Compute `enabled_sources` as all 7 minus the parsed skip list.
 
 **Write the config file:**
 
 Run `bash -c 'echo $JOB_DATA_ROOT'` to get the data directory. Write `$JOB_DATA_ROOT/jobs/sources-config.json`:
 
 ```json
-{"enabled": ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "research"]}
+{"enabled": ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]}
 ```
 
 Replace the array with the actual `enabled_sources` list.

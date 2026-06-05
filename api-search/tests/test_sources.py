@@ -6,8 +6,10 @@ from api_search.sources import (
     _slug_to_name,
     _strip_html,
     fetch_adzuna,
+    fetch_ashby,
     fetch_greenhouse,
     fetch_lever,
+    fetch_remotive,
     load_config,
 )
 from tests.conftest import FakeResp, make_client
@@ -45,6 +47,7 @@ def test_config_has_slugs_for_board_sources():
     cfg = load_config()
     assert cfg["greenhouse"]["slugs"]
     assert cfg["lever"]["slugs"]
+    assert cfg["ashby"]["slugs"]
 
 
 def test_registry_platform_matches_name():
@@ -188,3 +191,94 @@ def test_fetch_lever_skips_failed_board(capsys):
 
     assert list(fetch_lever(make_client(route), SUMMARY, {"slugs": ["acme"]})) == []
     assert "[LEVER]" in capsys.readouterr().out
+
+
+# ── fetch_ashby ───────────────────────────────────────────────────────────────
+
+
+def test_fetch_ashby_uses_slug_name_and_prefers_plain():
+    cfg = {"slugs": ["acme-co"]}
+    payload = {
+        "jobs": [
+            {
+                "title": "Staff Engineer",
+                "jobUrl": "https://jobs.ashbyhq.com/acme-co/1",
+                "applyUrl": "https://jobs.ashbyhq.com/acme-co/1/application",
+                "publishedAt": "2026-05-20T20:13:45.158+00:00",
+                "location": "Remote - Canada",
+                "isListed": True,
+                "descriptionPlain": "Remote senior role",
+                "descriptionHtml": "<p>Remote senior role</p>",
+            }
+        ]
+    }
+    jobs = list(fetch_ashby(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert len(jobs) == 1
+    assert jobs[0]["company"] == "Acme Co"
+    assert jobs[0]["url"] == "https://jobs.ashbyhq.com/acme-co/1"
+    assert jobs[0]["post_date"] == "2026-05-20"
+    assert jobs[0]["location"] == "Remote - Canada"
+    assert jobs[0]["description"] == "Remote senior role"
+
+
+def test_fetch_ashby_strips_html_when_no_plain_and_skips_unlisted():
+    cfg = {"slugs": ["acme"]}
+    payload = {
+        "jobs": [
+            {"title": "Hidden", "jobUrl": "u0", "isListed": False, "descriptionHtml": "<p>x</p>"},
+            {
+                "title": "Principal Engineer",
+                "jobUrl": "u1",
+                "descriptionHtml": "&lt;p&gt;Remote&lt;/p&gt;",
+            },
+        ]
+    }
+    jobs = list(fetch_ashby(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert len(jobs) == 1
+    assert jobs[0]["title"] == "Principal Engineer"
+    assert jobs[0]["description"] == "Remote"
+
+
+def test_fetch_ashby_skips_failed_board(capsys):
+    def route(url, params):
+        raise RuntimeError("boom")
+
+    assert list(fetch_ashby(make_client(route), SUMMARY, {"slugs": ["acme"]})) == []
+    assert "[ASHBY]" in capsys.readouterr().out
+
+
+# ── fetch_remotive ────────────────────────────────────────────────────────────
+
+
+def test_fetch_remotive_normalizes_and_strips_html():
+    payload = {
+        "jobs": [
+            {
+                "title": "Principal Engineer",
+                "company_name": "Acme Corp ",
+                "url": "https://remotive.com/remote-jobs/1",
+                "publication_date": "2026-06-02T20:15:53",
+                "candidate_required_location": "Worldwide",
+                "description": "<p>Fully remote senior role</p>",
+            }
+        ]
+    }
+    jobs = list(fetch_remotive(make_client(lambda url, params: FakeResp(payload)), SUMMARY, {}))
+    assert jobs == [
+        {
+            "title": "Principal Engineer",
+            "company": "Acme Corp",
+            "url": "https://remotive.com/remote-jobs/1",
+            "post_date": "2026-06-02",
+            "location": "Worldwide",
+            "description": "Fully remote senior role",
+        }
+    ]
+
+
+def test_fetch_remotive_skips_failed_query(capsys):
+    def route(url, params):
+        raise RuntimeError("timeout")
+
+    assert list(fetch_remotive(make_client(route), SUMMARY, {})) == []
+    assert "[REMOTIVE]" in capsys.readouterr().out

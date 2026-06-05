@@ -30,6 +30,8 @@ from api_search.candidate import queries_from_summary
 ADZUNA_URL = "https://api.adzuna.com/v1/api/jobs/ca/search/1"
 GREENHOUSE_BOARD = "https://boards-api.greenhouse.io/v1/boards/{slug}"
 LEVER_POSTINGS = "https://api.lever.co/v0/postings/{slug}"
+ASHBY_BOARD = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
+REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 
 # Cap on concurrent HTTP fetches within a single source (Adzuna queries, or
 # Greenhouse/Lever boards). httpx.Client is thread-safe, so each work item
@@ -217,6 +219,77 @@ def fetch_lever(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict
     yield from _fetch_in_parallel(cfg.get("slugs", []), _fetch_board)
 
 
+def fetch_ashby(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
+    """Pull every posting from each configured Ashby public job board.
+
+    Ashby's public ``posting-api`` endpoint returns the board's jobs but not the
+    company name, so the slug (the ``jobs.ashbyhq.com/{slug}`` board id) is
+    title-cased into a display name, mirroring the Lever fallback.
+    """
+
+    def _fetch_board(slug: str) -> list[dict[str, Any]]:
+        try:
+            resp = client.get(ASHBY_BOARD.format(slug=slug), params={"includeCompensation": "true"})
+            resp.raise_for_status()
+            jobs = resp.json().get("jobs", [])
+        except Exception as e:
+            print(f"[ASHBY] Board '{slug}' failed: {e}", flush=True)
+            return []
+
+        company = _slug_to_name(slug)
+        records = []
+        for job in jobs:
+            if job.get("isListed") is False:
+                continue
+            description = job.get("descriptionPlain") or _strip_html(job.get("descriptionHtml", ""))
+            records.append(
+                {
+                    "title": job.get("title", ""),
+                    "company": company,
+                    "url": job.get("jobUrl") or job.get("applyUrl", ""),
+                    "post_date": (job.get("publishedAt") or "")[:10],
+                    "location": job.get("location", "") or "",
+                    "description": description,
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(cfg.get("slugs", []), _fetch_board)
+
+
+def fetch_remotive(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
+    """Keyword search against the Remotive remote-jobs API, one query per target title.
+
+    Remotive is a remote-only board, so the shared remote filter in
+    :mod:`api_search.core` is effectively a no-op here; seniority and the
+    prefilter still apply. Descriptions are HTML and get stripped.
+    """
+    limit = cfg.get("limit", 50)
+
+    def _fetch_query(title: str) -> list[dict[str, Any]]:
+        try:
+            resp = client.get(REMOTIVE_URL, params={"search": title, "limit": limit})
+            resp.raise_for_status()
+            jobs = resp.json().get("jobs", [])
+        except Exception as e:
+            print(f'[REMOTIVE] Query "{title}" failed: {e}', flush=True)
+            return []
+
+        return [
+            {
+                "title": job.get("title", ""),
+                "company": (job.get("company_name") or "").strip(),
+                "url": job.get("url", ""),
+                "post_date": (job.get("publication_date") or "")[:10],
+                "location": job.get("candidate_required_location", "") or "",
+                "description": _strip_html(job.get("description", "")),
+            }
+            for job in jobs
+        ]
+
+    yield from _fetch_in_parallel(summary["target_titles"], _fetch_query)
+
+
 SOURCES: dict[str, Source] = {
     "adzuna": Source(
         name="adzuna",
@@ -238,6 +311,20 @@ SOURCES: dict[str, Source] = {
         employment_type="full-time",
         location_note="Remote, Canada OK",
         fetch=fetch_lever,
+    ),
+    "ashby": Source(
+        name="ashby",
+        platform="ashby",
+        employment_type="full-time",
+        location_note="Remote, Canada OK",
+        fetch=fetch_ashby,
+    ),
+    "remotive": Source(
+        name="remotive",
+        platform="remotive",
+        employment_type="full-time",
+        location_note="Remote",
+        fetch=fetch_remotive,
     ),
 }
 
