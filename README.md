@@ -15,81 +15,27 @@ An AI harness that searches for jobs. Currently, it searches:
 * Docker
 * pyenv
 
-## Setup
+## Getting started
 
-> **New here?** [`docs/onboarding.md`](docs/onboarding.md) walks you from a fresh
-> clone all the way to your first `/job-search` run — including creating a resume
-> YAML from scratch, which the steps below assume you already have.
-
-The harness's semantic dedup/similarity layer uses
-[sqlite-vec](https://github.com/asg017/sqlite-vec), so your Python v3.14.5 must
-have loadable extension support for sqlite3 enabled. `init.sh` verifies this
-automatically and stops with guidance if it is missing; to check by hand:
-
-```bash
-; python -c 'import sqlite3; print(hasattr(sqlite3.connect(":memory:"), "enable_load_extension"))'
-```
-
-If that does not return `True`, rebuild Python with:
-
-```
-; PYTHON_CONFIGURE_OPTS="${PYTHON_CONFIGURE_OPTS} --enable-loadable-sqlite-extensions" \
-  pyenv install --force 3.14.5
-```
-
-* for Python environment, run: `init.sh`
-* for 3rd party tools (rtk, plus Ollama and the `qwen3-embedding:0.6b` model that powers the semantic layer), run: `3rdparty-install.sh`
-* also, `mkdir ~/job-data` (this is your job search directory)
-
-## Configure
-
-There is some local configuration required.
-
-Update `.claude/settings.local.json` with:
-
-```json
-  "env": {
-    "RESUME_FILE": "<full path to resume.yaml>",
-    "ADZUNA_APP_ID": "<your id>",
-    "ADZUNA_API_KEY": "<your key>",
-    "JOB_DATA_ROOT": "/<your path to>/job-data"
-  }
-```
-
-** Note that this will create a `${JOB_DATA_ROOT}/jobs/postings.db` SQLite DB
+**[`docs/onboarding.md`](docs/onboarding.md) is the setup guide** — it walks you
+from a fresh clone to your first `/job-search` run: the Python sqlite-extension
+prerequisite, `init.sh` / `3rdparty-install.sh`, creating a [RenderCV-format](https://github.com/rendercv/rendercv)
+resume YAML, configuring `.claude/settings.local.json`, connecting the MCP
+servers, and browsing results.
 
 ## Usage
 
-### Your Resume
+Once you're set up, the top-line is `/job-search` — it runs the full harness and
+lets you pick which job sources to search. To browse the collected postings
+yourself, there's a Textual **TUI** (`job-tui`) and a Reflex **web UI** (`./web`,
+at TUI parity). See [the onboarding guide](docs/onboarding.md#10-browse-what-you-collected)
+for how to run each.
 
-The input YAML resume that this harness expects is in [RenderCV format](https://github.com/rendercv/rendercv).
-This tool does a create job of creating a formatted resume so that you can
-concentrate on the content instead. Once you have created your YAML resume, you
-can use this harness.
+## Documentation
 
-### Agents
-
-The top-line is: `/job-search`. This runs the full harness and allows for job listing source selection.
-
-### Job Database UI
-
-You may want to explore the collected data yourself. For that, there is a TUI:
-
-```bash
-. ./venv/bin/activate && job-tui
-```
-
-This application presents a list of job postings that the harness has
-collected, along with their status. Pressing `Enter` opens an expanded
-window that displays additional details.
-
-### Job Database Web UI
-
-A web app version of the text UI is available in the `./web` directory. One workflow: 
-
-```bash
-; cd ./web
-; ./build-images.sh
-; export JOB_DATA_ROOT=/path/to/job-data
-; docker-compose -f web/docker-compose.yml up --build
-```
+* [Onboarding](docs/onboarding.md) — from clone to first run.
+* [Database schema](docs/database.md) — the `postings`, `companies`, and vector tables.
+* [Job states](docs/job-states.md) — the posting lifecycle.
+* [Embeddings](docs/embeddings.md) — the semantic dedup / score-reuse layer.
+* [Workflow](docs/harness-workflow.mmd) / [data flow](docs/data-flow.mmd) — agent and data diagrams.
+* [CLAUDE.md](CLAUDE.md) — the agent roster, skills, and contributor directives.
