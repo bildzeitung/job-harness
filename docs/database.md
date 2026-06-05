@@ -10,6 +10,62 @@ Three tables:
 Plus one vector sidecar:
 - **`postings_vec`** — a [sqlite-vec](https://github.com/asg017/sqlite-vec) virtual table holding a 1024-dim embedding per posting (keyed by URL, cosine distance), created and loaded by `make_engine`. Powers semantic repost-dedup and score-reuse; see [embeddings.md](embeddings.md).
 
+## Diagram
+
+```mermaid
+erDiagram
+    companies ||--o{ company_postings : "name → company_name"
+    postings  ||--|| company_postings : "url → url"
+    postings  ||--o| postings_vec : "url (sidecar)"
+
+    postings {
+        TEXT    url PK "canonical posting URL"
+        TEXT    title
+        TEXT    company
+        TEXT    platform "linkedin/indeed/adzuna/…"
+        TEXT    post_date
+        INTEGER applicant_count
+        TEXT    employment_type
+        TEXT    location_note
+        TEXT    description_summary
+        TEXT    first_seen
+        TEXT    scored_date
+        INTEGER base_score
+        INTEGER modifier
+        INTEGER final_score
+        TEXT    scoring_notes
+        TEXT    dimension_scores "JSON"
+        TEXT    job_description_text
+        TEXT    selected_date
+        TEXT    status "default 'new'"
+    }
+
+    companies {
+        TEXT    name PK "company name"
+        INTEGER remote_confirmed "0/1"
+        INTEGER canada_confirmed "0/1"
+        TEXT    notes
+        TEXT    researched_date
+        TEXT    last_seen_date
+        TEXT    careers_url
+        TEXT    fetch_notes
+    }
+
+    company_postings {
+        TEXT url PK "FK → postings.url"
+        TEXT company_name FK "→ companies.name (indexed)"
+    }
+
+    postings_vec {
+        TEXT  url PK "→ postings.url"
+        FLOAT embedding "1024-dim, cosine (sqlite-vec vec0)"
+    }
+```
+
+Each posting links to exactly one company through `company_postings` (`url` is that table's primary key), and a company can own many postings — so the company-to-posting relationship is **1 : N**. `postings_vec` is a parallel virtual table keyed by the same `url`; it carries no SQL foreign key but is kept in lock-step with `postings` by the application layer.
+
+> **Editing diagrams?** After changing any mermaid diagram in `docs/` (a ```mermaid block in a `.md` file, or a standalone `.mmd` file), validate it with `nox -s docs_mermaid` from the repo root. It runs the official `mermaid-cli` parser in Docker against every diagram and fails on the first syntax error, so a pass means the diagrams render on GitHub. Requires Docker.
+
 ## Table: `postings`
 
 One row per job posting URL. The URL is the natural primary key — duplicate inserts are silently ignored (`INSERT OR IGNORE`).
