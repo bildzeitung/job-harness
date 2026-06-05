@@ -67,7 +67,7 @@ Two UIs sit on top of the shared `harness-db` data layer (`harness_db.queries`,
 
 ## Agents
 
-Twelve agents are configured in [.claude/agents/](.claude/agents/):
+Eleven agents are configured in [.claude/agents/](.claude/agents/):
 
 **CV agents:**
 - **resume-evaluator** — Runs the CV through achievement reframing, 10-second scan test, and red flag detection. Use via `/resume-work` skill.
@@ -79,7 +79,6 @@ Twelve agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-linkedin** — Searches LinkedIn via the LinkedIn MCP server (`mcp__linkedin__search_jobs`).
 - **job-seeker-indeed** — Searches Indeed via the Indeed MCP server.
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
-- **job-seeker-email** — Reads the most recent LinkedIn job alert email from Gmail (`jobalerts-noreply@linkedin.com`), extracts postings, and labels the email with `AI`. Requires Gmail MCP OAuth. Use via `/job-search-email` skill — not part of the main pipeline.
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
 - **job-scorer** — Scores a single job posting 1–100 against the CV. Saves reports to `job-data/jobs/reports/`.
