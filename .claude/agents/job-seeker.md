@@ -92,7 +92,7 @@ Read `$JOB_DATA_ROOT/jobs/sources-config.json`. This file is written by the job-
 If the file exists: parse its `enabled` array and store as `enabled_sources`.
 If the file does not exist or cannot be read: default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
 
-Note: the `greenhouse` source runs three ATS APIs in one agent (Greenhouse, Lever, and Ashby); `remotive` is its own source/agent.
+Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever, Ashby, Workable, and Recruitee); `remotive` is its own source/agent.
 
 Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
 
@@ -130,7 +130,7 @@ In a single message, spawn all eligible sub-agents at the same time using the Ag
 
 No-MCP sources — spawn only if in `enabled_sources`:
 - `subagent_type: job-seeker-adzuna` — if `adzuna` in `enabled_sources`
-- `subagent_type: job-seeker-greenhouse` — if `greenhouse` in `enabled_sources` (runs Greenhouse + Lever + Ashby)
+- `subagent_type: job-seeker-greenhouse` — if `greenhouse` in `enabled_sources` (runs Greenhouse + Lever + Ashby + Workable + Recruitee)
 - `subagent_type: job-seeker-remotive` — if `remotive` in `enabled_sources`
 - `subagent_type: job-seeker-research` — if `research` in `enabled_sources`
 
@@ -151,6 +151,8 @@ You may be running as a sub-agent yourself (e.g. spawned by the `job-search` ski
   python -m api_search greenhouse  # writes greenhouse-{date}.json
   python -m api_search lever       # writes lever-{date}.json
   python -m api_search ashby       # writes ashby-{date}.json
+  python -m api_search workable    # writes workable-{date}.json
+  python -m api_search recruitee   # writes recruitee-{date}.json
   python -m api_search remotive    # writes remotive-{date}.json
   ```
 - **linkedin / indeed / ziprecruiter** — call their MCP tools directly (they are in your own tool list) and write the `{platform}-{date}.json` files yourself in the consolidator schema.
@@ -158,7 +160,7 @@ You may be running as a sub-agent yourself (e.g. spawned by the `job-search` ski
 
 Decide once, up front: attempt a single `Agent` spawn; if it fails with the sub-agent-session error, switch to the inline path above for **all** enabled sources for the rest of this run. Never silently emit `0 (Agent tool unavailable in sub-agent session)` for any source.
 
-Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes three — one per ATS):
+Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes five — one per ATS):
 - `job-data/jobs/linkedin-{YYYY-MM-DD}.json` (if spawned)
 - `job-data/jobs/indeed-{YYYY-MM-DD}.json`
 - `job-data/jobs/adzuna-{YYYY-MM-DD}.json`
@@ -166,6 +168,8 @@ Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes th
 - `job-data/jobs/greenhouse-{YYYY-MM-DD}.json`
 - `job-data/jobs/lever-{YYYY-MM-DD}.json` (also from the greenhouse agent)
 - `job-data/jobs/ashby-{YYYY-MM-DD}.json` (also from the greenhouse agent)
+- `job-data/jobs/workable-{YYYY-MM-DD}.json` (also from the greenhouse agent)
+- `job-data/jobs/recruitee-{YYYY-MM-DD}.json` (also from the greenhouse agent)
 - `job-data/jobs/remotive-{YYYY-MM-DD}.json`
 - `job-data/jobs/research-{YYYY-MM-DD}.json`
 

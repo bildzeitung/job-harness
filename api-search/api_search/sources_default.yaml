@@ -4,6 +4,8 @@
 # greenhouse : Greenhouse public board API, one board per slug.
 # lever      : Lever public postings API, one board per slug.
 # ashby      : Ashby public board API, one board per slug (the jobs.ashbyhq.com/{slug} id).
+# workable   : Workable public widget API, one board per slug (the {slug}.workable.com id).
+# recruitee  : Recruitee public offers API, one board per slug (the {slug}.recruitee.com id).
 # remotive   : Remotive remote-jobs API, keyword search driven by target_titles.
 
 adzuna:
@@ -93,6 +95,22 @@ ashby:
     - supabase
     - render
     - openai
+
+# Workable slugs are the {slug}.workable.com board id. These ATSes skew toward
+# EU/SMB companies, so the seed list is short and verified — extend it with
+# boards relevant to your own search.
+workable:
+  slugs:
+    - zego
+    - doist
+
+# Recruitee slugs are the {slug}.recruitee.com board id. Same EU/SMB skew —
+# extend with boards relevant to your search.
+recruitee:
+  slugs:
+    - personio
+    - nmbrs
+    - channable
 
 remotive:
   # Max results per target-title query (Remotive caps at the board size).

@@ -18,33 +18,42 @@ Researched 2026-06-04.
 | Greenhouse | Public ATS board API (slug fan-out) | `job-seeker-greenhouse` → `api_search greenhouse` |
 | Lever | Public ATS board API (slug fan-out) | `job-seeker-greenhouse` → `api_search lever` |
 | **Ashby** | Public ATS board API (slug fan-out) | `job-seeker-greenhouse` → `api_search ashby` |
+| **Workable** | Public ATS widget API (slug fan-out) | `job-seeker-greenhouse` → `api_search workable` |
+| **Recruitee** | Public ATS offers API (slug fan-out) | `job-seeker-greenhouse` → `api_search recruitee` |
 | **Remotive** | Public remote-jobs API (keyword) | `job-seeker-remotive` → `api_search remotive` |
 | Open-ended research | WebSearch / WebFetch | `job-seeker-research` |
 
-Ashby and Remotive were added on 2026-06-04. Ashby is bundled into the
-`greenhouse` ATS agent because it shares the same mechanism and DB-enrichment
+Ashby, Workable, and Recruitee were added to the `greenhouse` ATS agent (2026-06-04
+/ 2026-06-05) because they share the same slug-fan-out mechanism and DB-enrichment
 semantics (public board API, remote + Canada-OK, `remote_confirmed` +
-`canada_confirmed`). Remotive is its own source/agent because it is global-remote
-(it does **not** establish Canada eligibility at the source, so it enriches
-`remote_confirmed` only — eligibility is left to the scorer / `job-preparer`).
+`canada_confirmed`). Workable and Recruitee boards include on-site roles and skew
+EU/SMB, so each fetcher folds the board's own remote flag (`telecommuting` /
+`remote`) into the location text to drive the shared remote filter, and the
+`canada_confirmed` flag is the same optimistic default the rest of the ATS bundle
+uses — actual eligibility is enforced downstream by the scorer / `job-preparer`.
+
+Remotive is its own source/agent because it is a keyword aggregator (different
+mechanism) and global-remote: it does **not** establish Canada eligibility at the
+source, so it enriches `remote_confirmed` only.
 
 ### Adding more boards is config, not code
 
-For the ATS sources (Greenhouse / Lever / Ashby), adding a company is one slug in
-`api-search/api_search/sources_default.yaml`. No code change. Ashby slugs are the
-`jobs.ashbyhq.com/{slug}` board id (lowercase); verify a slug returns postings
-with `curl https://api.ashbyhq.com/posting-api/job-board/{slug}`.
+For the ATS sources (Greenhouse / Lever / Ashby / Workable / Recruitee), adding a
+company is one slug in `api-search/api_search/sources_default.yaml`. No code change.
+Verify a slug returns postings before adding it:
+
+- Ashby — `curl https://api.ashbyhq.com/posting-api/job-board/{slug}`
+- Workable — `curl 'https://apply.workable.com/api/v1/widget/accounts/{slug}?details=true'`
+- Recruitee — `curl https://{slug}.recruitee.com/api/offers/`
 
 ## Other free, no-auth ATS APIs (easy follow-on sources)
 
-Same slug-fan-out pattern as Greenhouse/Lever/Ashby — each is one `fetch_*`
+Same slug-fan-out pattern as the wired-in ATS sources — each is one `fetch_*`
 generator plus a registry entry in `api_search/sources.py`. Not yet wired in;
 add when there's a concrete list of companies worth tracking on them.
 
 | ATS | Public endpoint (`{slug}` = company board) | Notes |
 |---|---|---|
-| Workable | `https://apply.workable.com/api/v1/widget/accounts/{slug}` | JSON, full fields |
-| Recruitee | `https://{slug}.recruitee.com/api/offers` | JSON offers feed |
 | Personio | `https://{slug}.jobs.personio.de/xml?language=en` | XML (reuse `_strip_html`); EU-HQ companies |
 | SmartRecruiters | `https://api.smartrecruiters.com/v1/companies/{slug}/postings` | Descriptions need a second `…/postings/{id}` call |
 

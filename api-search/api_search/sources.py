@@ -32,6 +32,8 @@ GREENHOUSE_BOARD = "https://boards-api.greenhouse.io/v1/boards/{slug}"
 LEVER_POSTINGS = "https://api.lever.co/v0/postings/{slug}"
 ASHBY_BOARD = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
+WORKABLE_WIDGET = "https://apply.workable.com/api/v1/widget/accounts/{slug}"
+RECRUITEE_OFFERS = "https://{slug}.recruitee.com/api/offers/"
 
 # Cap on concurrent HTTP fetches within a single source (Adzuna queries, or
 # Greenhouse/Lever boards). httpx.Client is thread-safe, so each work item
@@ -290,6 +292,83 @@ def fetch_remotive(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[d
     yield from _fetch_in_parallel(summary["target_titles"], _fetch_query)
 
 
+def fetch_workable(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
+    """Pull published jobs from each configured Workable public widget board.
+
+    Workable boards include on-site roles, so each job's ``telecommuting`` flag is
+    surfaced into the location text as "Remote" to drive the shared remote filter;
+    non-remote jobs fall through it. ``details=true`` is required for descriptions.
+    """
+
+    def _fetch_board(slug: str) -> list[dict[str, Any]]:
+        try:
+            resp = client.get(WORKABLE_WIDGET.format(slug=slug), params={"details": "true"})
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"[WORKABLE] Board '{slug}' failed: {e}", flush=True)
+            return []
+
+        company = data.get("name") or _slug_to_name(slug)
+        records = []
+        for job in data.get("jobs", []):
+            if job.get("telecommuting"):
+                location = "Remote"
+            else:
+                location = " ".join(p for p in (job.get("city"), job.get("country")) if p)
+            records.append(
+                {
+                    "title": job.get("title", ""),
+                    "company": company,
+                    "url": job.get("url") or job.get("shortlink", ""),
+                    "post_date": (job.get("published_on") or "")[:10],
+                    "location": location,
+                    "description": _strip_html(job.get("description", "")),
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(cfg.get("slugs", []), _fetch_board)
+
+
+def fetch_recruitee(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
+    """Pull published offers from each configured Recruitee public board.
+
+    Recruitee boards also include on-site roles, so the per-offer ``remote`` flag
+    is folded into the location text to drive the shared remote filter.
+    """
+
+    def _fetch_board(slug: str) -> list[dict[str, Any]]:
+        try:
+            resp = client.get(RECRUITEE_OFFERS.format(slug=slug))
+            resp.raise_for_status()
+            offers = resp.json().get("offers", [])
+        except Exception as e:
+            print(f"[RECRUITEE] Board '{slug}' failed: {e}", flush=True)
+            return []
+
+        records = []
+        for o in offers:
+            if o.get("status") and o.get("status") != "published":
+                continue
+            location = o.get("location") or ""
+            if o.get("remote"):
+                location = f"Remote {location}".strip()
+            records.append(
+                {
+                    "title": o.get("title", ""),
+                    "company": o.get("company_name") or _slug_to_name(slug),
+                    "url": o.get("careers_url") or o.get("careers_apply_url", ""),
+                    "post_date": (o.get("published_at") or "")[:10],
+                    "location": location,
+                    "description": _strip_html(o.get("description", "")),
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(cfg.get("slugs", []), _fetch_board)
+
+
 SOURCES: dict[str, Source] = {
     "adzuna": Source(
         name="adzuna",
@@ -318,6 +397,20 @@ SOURCES: dict[str, Source] = {
         employment_type="full-time",
         location_note="Remote, Canada OK",
         fetch=fetch_ashby,
+    ),
+    "workable": Source(
+        name="workable",
+        platform="workable",
+        employment_type="full-time",
+        location_note="Remote, Canada OK",
+        fetch=fetch_workable,
+    ),
+    "recruitee": Source(
+        name="recruitee",
+        platform="recruitee",
+        employment_type="full-time",
+        location_note="Remote, Canada OK",
+        fetch=fetch_recruitee,
     ),
     "remotive": Source(
         name="remotive",

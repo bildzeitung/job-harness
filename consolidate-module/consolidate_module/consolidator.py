@@ -29,6 +29,8 @@ PLATFORMS = [
     "greenhouse",
     "lever",
     "ashby",
+    "workable",
+    "recruitee",
     "remotive",
     "research",
 ]

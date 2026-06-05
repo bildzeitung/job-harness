@@ -9,7 +9,9 @@ from api_search.sources import (
     fetch_ashby,
     fetch_greenhouse,
     fetch_lever,
+    fetch_recruitee,
     fetch_remotive,
+    fetch_workable,
     load_config,
 )
 from tests.conftest import FakeResp, make_client
@@ -48,6 +50,8 @@ def test_config_has_slugs_for_board_sources():
     assert cfg["greenhouse"]["slugs"]
     assert cfg["lever"]["slugs"]
     assert cfg["ashby"]["slugs"]
+    assert cfg["workable"]["slugs"]
+    assert cfg["recruitee"]["slugs"]
 
 
 def test_registry_platform_matches_name():
@@ -245,6 +249,108 @@ def test_fetch_ashby_skips_failed_board(capsys):
 
     assert list(fetch_ashby(make_client(route), SUMMARY, {"slugs": ["acme"]})) == []
     assert "[ASHBY]" in capsys.readouterr().out
+
+
+# ── fetch_workable ────────────────────────────────────────────────────────────
+
+
+def test_fetch_workable_uses_account_name_and_remote_flag():
+    cfg = {"slugs": ["acme"]}
+    payload = {
+        "name": "Acme Corp",
+        "jobs": [
+            {
+                "title": "Staff Engineer",
+                "url": "https://apply.workable.com/j/ABC123",
+                "shortlink": "https://apply.workable.com/j/ABC123",
+                "published_on": "2026-06-02",
+                "telecommuting": True,
+                "city": "Halifax",
+                "country": "Canada",
+                "description": "<p>Senior role</p>",
+            }
+        ],
+    }
+    jobs = list(fetch_workable(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert jobs[0]["company"] == "Acme Corp"
+    assert jobs[0]["url"] == "https://apply.workable.com/j/ABC123"
+    assert jobs[0]["post_date"] == "2026-06-02"
+    assert jobs[0]["location"] == "Remote"
+    assert jobs[0]["description"] == "Senior role"
+
+
+def test_fetch_workable_builds_location_when_not_remote():
+    cfg = {"slugs": ["acme"]}
+    payload = {
+        "name": "Acme",
+        "jobs": [
+            {
+                "title": "X",
+                "url": "u",
+                "telecommuting": False,
+                "city": "Berlin",
+                "country": "Germany",
+                "description": "",
+            }
+        ],
+    }
+    jobs = list(fetch_workable(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert jobs[0]["location"] == "Berlin Germany"
+
+
+def test_fetch_workable_skips_failed_board(capsys):
+    def route(url, params):
+        raise RuntimeError("boom")
+
+    assert list(fetch_workable(make_client(route), SUMMARY, {"slugs": ["acme"]})) == []
+    assert "[WORKABLE]" in capsys.readouterr().out
+
+
+# ── fetch_recruitee ───────────────────────────────────────────────────────────
+
+
+def test_fetch_recruitee_normalizes_and_folds_remote_flag():
+    cfg = {"slugs": ["acme"]}
+    payload = {
+        "offers": [
+            {
+                "title": "Principal Engineer",
+                "careers_url": "https://jobs.acme.com/o/principal-engineer",
+                "published_at": "2026-06-02 10:10:41 UTC",
+                "status": "published",
+                "remote": True,
+                "location": "Utrecht, Netherlands",
+                "company_name": "Acme",
+                "description": "<p>Remote senior role</p>",
+            }
+        ]
+    }
+    jobs = list(fetch_recruitee(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert jobs[0]["company"] == "Acme"
+    assert jobs[0]["url"] == "https://jobs.acme.com/o/principal-engineer"
+    assert jobs[0]["post_date"] == "2026-06-02"
+    assert jobs[0]["location"] == "Remote Utrecht, Netherlands"
+    assert jobs[0]["description"] == "Remote senior role"
+
+
+def test_fetch_recruitee_skips_unpublished():
+    cfg = {"slugs": ["acme"]}
+    payload = {
+        "offers": [
+            {"title": "Draft", "careers_url": "u0", "status": "draft", "description": ""},
+            {"title": "Live", "careers_url": "u1", "status": "published", "description": ""},
+        ]
+    }
+    jobs = list(fetch_recruitee(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert [j["title"] for j in jobs] == ["Live"]
+
+
+def test_fetch_recruitee_skips_failed_board(capsys):
+    def route(url, params):
+        raise RuntimeError("boom")
+
+    assert list(fetch_recruitee(make_client(route), SUMMARY, {"slugs": ["acme"]})) == []
+    assert "[RECRUITEE]" in capsys.readouterr().out
 
 
 # ── fetch_remotive ────────────────────────────────────────────────────────────
