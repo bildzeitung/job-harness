@@ -201,30 +201,22 @@ before LinkedIn is wired up.
 
 ## 8. (Optional) Tune your search config
 
-Three user-editable files in `$JOB_DATA_ROOT` steer the search. You do **not**
-have to create any of them — the first run seeds each from a shipped template if
-it is missing, and never overwrites a copy you have tuned. Two say what to
-**look for** (`target-roles.md`, `candidate-highlights.md`); one says what to
-**drop** (`disqualifiers.yaml`).
+Two user-editable files in `$JOB_DATA_ROOT` steer the search. You do **not** have
+to create either — the first run seeds each from a shipped template if it is
+missing, and never overwrites a copy you have tuned. They are complementary:
+`target-roles.md` says what to **look for**, `disqualifiers.yaml` says what to
+**drop**.
 
 ### Target roles — what to look for
 
 `$JOB_DATA_ROOT/target-roles.md` is the canonical list of **positive targets**:
 the role titles, the title keywords that drive search queries and seniority
 filtering, and your domains of interest. Every `job-seeker` searcher reads it,
-and it feeds the generated `candidate-summary.json`. Seeded from
+and it feeds the generated `candidate-summary.json` (the rest of which — name,
+headline, stack, location — comes from your resume YAML). Seeded from
 [`harness-db/harness_db/target-roles.default.md`](../harness-db/harness_db/target-roles.default.md)
 (a senior-engineering starter) — edit the **Title Keywords** and **Domains**
 sections to match the roles you actually want.
-
-### Candidate highlights — who you are
-
-`$JOB_DATA_ROOT/candidate-highlights.md` is a quick-reference profile (notable
-experience, stack, location, certifications) that searchers read instead of
-loading your full resume, and that also feeds `candidate-summary.json`. Seeded
-from
-[`harness-db/harness_db/candidate-highlights.default.md`](../harness-db/harness_db/candidate-highlights.default.md)
-— replace the placeholder bullets with your own.
 
 ### Disqualifiers — what to drop
 

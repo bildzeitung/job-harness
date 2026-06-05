@@ -23,7 +23,6 @@ packages = ["harness_db"]
 [tool.hatch.build.targets.wheel.force-include]
 "harness_db/disqualifiers.default.yaml" = "harness_db/disqualifiers.default.yaml"
 "harness_db/target-roles.default.md" = "harness_db/target-roles.default.md"
-"harness_db/candidate-highlights.default.md" = "harness_db/candidate-highlights.default.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "nox>=2024.3.2", "ruff>=0.6"]

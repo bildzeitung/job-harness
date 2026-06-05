@@ -23,8 +23,7 @@ If the file already exists **and** its `generated` field matches today's date, s
 Otherwise:
 1. Read `bash -c 'echo $RESUME_FILE'` to get the resume path, then read the YAML file.
 2. Read `cat "$JOB_DATA_ROOT/target-roles.md"` (seeded in Step 0e — the user-editable list of target titles, keywords, and domains).
-3. Read `cat "$JOB_DATA_ROOT/candidate-highlights.md"` (seeded in Step 0e — the user-editable quick-reference profile).
-4. Synthesize and write `$JOB_DATA_ROOT/candidate-summary.json`:
+3. Synthesize and write `$JOB_DATA_ROOT/candidate-summary.json`:
 
 ```json
 {
@@ -46,7 +45,7 @@ Otherwise:
 }
 ```
 
-Fill in actual values from the resume YAML — do not leave placeholders. Read `cv.name` from the YAML for the `name` field. The `stack`, `domains`, and `target_titles` arrays should reflect the actual resume content. These positive fields drive every searcher's queries (`target_titles` × `domains`) and filters (`seniority_keywords`, `requirements`).
+Fill in actual values — do not leave placeholders. Draw `name` (`cv.name`), `headline`, `location`, `years_experience`, `notable`, and `stack` from the **resume YAML**; draw `target_titles`, `seniority_keywords`, and `domains` from **`target-roles.md`**. These positive fields drive every searcher's queries (`target_titles` × `domains`) and filters (`seniority_keywords`, `requirements`).
 
 Hard **exclusions** are NOT part of this summary — they live in the single, user-editable `disqualifiers.yaml` (`prefilter` section, seeded in Step 0d) so every searcher, `job-preparer`, and the scorer apply one consistent list. Do not add an `exclude` array here.
 
@@ -108,24 +107,17 @@ DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
 
 Do not overwrite an existing copy — the user may have tuned it.
 
-## Step 0e: Ensure Positive-Target Config Exists
+## Step 0e: Ensure Target-Roles Config Exists
 
-Two user-editable files hold the candidate's positive search inputs, both read
-by Step 0 (candidate summary) and every searcher:
-
-- `$JOB_DATA_ROOT/target-roles.md` — target role titles, title keywords, and
-  domains of interest (the canonical list of positive targets).
-- `$JOB_DATA_ROOT/candidate-highlights.md` — the quick-reference candidate
-  profile (notable experience, stack, location, certifications).
-
-If either is missing, seed it from its bundled starter template:
+The candidate's positive search inputs — target role titles, title keywords, and
+domains of interest — live in one user-editable file, `$JOB_DATA_ROOT/target-roles.md`,
+read by Step 0 (candidate summary) and every searcher. If it is missing, seed it
+from the bundled starter template:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-for f in target-roles candidate-highlights; do
-  DEST="$JOB_DATA_ROOT/$f.md"
-  [ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/$f.default.md" "$DEST"
-done
+DEST="$JOB_DATA_ROOT/target-roles.md"
+[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/target-roles.default.md" "$DEST"
 ```
 
 Do not overwrite an existing copy — the user may have tuned it.
