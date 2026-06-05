@@ -14,9 +14,9 @@ new rows cheaply.
 
 from __future__ import annotations
 
-import argparse
 import sys
 
+import typer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -41,7 +41,7 @@ def _indexed_urls(engine) -> set[str]:
         raw.close()
 
 
-def main(missing_only: bool = False) -> int:
+def run(missing_only: bool = False) -> int:
     engine = make_engine(get_db_path())
     with Session(engine) as session:
         postings = list(session.scalars(select(Posting)))
@@ -69,12 +69,19 @@ def main(missing_only: bool = False) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Backfill posting embeddings into postings_vec.")
-    parser.add_argument(
+app = typer.Typer(help="Backfill posting embeddings into postings_vec.")
+
+
+@app.command()
+def main(
+    missing_only: bool = typer.Option(
+        False,
         "--missing-only",
-        action="store_true",
         help="Skip postings already present in postings_vec (resume / incremental catch-up).",
-    )
-    args = parser.parse_args()
-    raise SystemExit(main(missing_only=args.missing_only))
+    ),
+) -> None:
+    raise typer.Exit(run(missing_only=missing_only))
+
+
+if __name__ == "__main__":
+    app()
