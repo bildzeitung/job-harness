@@ -40,6 +40,19 @@ JD_TRUNCATE_WARN_THRESHOLD = 7900
 # trustworthy (mirrors the consolidator). Below this we score normally.
 _MIN_DEDUP_CHARS = 200
 
+# Per-dimension weights (must match the rubric table in system_prompt.txt).
+# base_score is computed here from these weights rather than trusting the model
+# to do the `round(weighted_average * 10)` arithmetic — it intermittently emits
+# the raw 1–10 average instead, collapsing ~40% of scores by 10x. See
+# _compute_base_score.
+_DIMENSION_WEIGHTS = {
+    "technical_fit": 0.35,
+    "seniority_match": 0.25,
+    "domain_fit": 0.20,
+    "remote_canada_confirmed": 0.10,
+    "role_clarity": 0.10,
+}
+
 
 def _render_disqualifiers(config: dict[str, Any]) -> str:
     lines = []
@@ -279,6 +292,27 @@ def _index_vector(engine, result: dict[str, Any]) -> None:
         print(f"[WARN] could not index {result.get('url')}: {exc}", file=sys.stderr)
 
 
+def _compute_base_score(dimension_scores: dict[str, Any], fallback: Any) -> int:
+    """Derive base_score (10–100) from the 1–10 dimension scores.
+
+    The model is asked to compute `round(weighted_average * 10)` itself but does
+    so unreliably — it intermittently returns the un-multiplied 1–10 average,
+    which clamps the final score to ~1 (a 10x error on ~40% of postings). We own
+    the arithmetic here instead. The model's own `base_score` is used only as a
+    fallback when the dimension scores are missing or malformed.
+    """
+    try:
+        weighted = sum(
+            _DIMENSION_WEIGHTS[dim] * float(dimension_scores[dim]) for dim in _DIMENSION_WEIGHTS
+        )
+    except (KeyError, TypeError, ValueError):
+        try:
+            return max(1, min(100, int(fallback)))
+        except (TypeError, ValueError):
+            return 50
+    return max(1, min(100, round(weighted * 10)))
+
+
 def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str, Any]:
     url = posting.get("url", "")
     title = posting.get("title", "")
@@ -331,7 +365,8 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
             "scoring_notes": "JSON parse failed; default score applied",
         }
 
-    base_score: int = scored.get("base_score", 50)
+    dimension_scores = scored.get("dimension_scores", {})
+    base_score = _compute_base_score(dimension_scores, scored.get("base_score", 50))
     disqualifier_mod: int = scored.get("disqualifier_modifier", 0)
     time_mod = _age_modifier(post_date)
     comp_mod = _competition_modifier(applicant_count)
@@ -355,7 +390,7 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
         "modifier": modifier,
         "final_score": final_score,
         "scoring_notes": notes,
-        "dimension_scores": scored.get("dimension_scores", {}),
+        "dimension_scores": dimension_scores,
         "job_description_text": jd_text,
     }
 

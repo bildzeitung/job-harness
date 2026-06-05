@@ -12,6 +12,7 @@ from harness_db.models import make_engine
 from scoring_module.scorer import (
     _age_modifier,
     _competition_modifier,
+    _compute_base_score,
     _fetch_jd,
     _format_candidate_profile,
     _render_disqualifiers,
@@ -199,10 +200,16 @@ def test_fetch_jd_returns_none_on_exception():
 def _api_response(
     base_score=78, disqualifier_modifier=0, notes="Good fit", dimension_scores=None
 ) -> MagicMock:
-    """Build a mock Anthropic client that returns a given score response."""
+    """Build a mock Anthropic client that returns a given score response.
+
+    base_score is now computed by the scorer from dimension_scores, so by default
+    we synthesise uniform dimensions (base_score / 10) that weight-average back to
+    the requested base_score. Pass dimension_scores explicitly to exercise the
+    derivation directly.
+    """
     if dimension_scores is None:
         dimension_scores = {
-            k: 8
+            k: base_score / 10
             for k in (
                 "technical_fit",
                 "seniority_match",
@@ -239,6 +246,53 @@ def _posting(jd_text="x" * 600, post_date=None, applicant_count=None, **kwargs):
         "job_description_text": jd_text,
         **kwargs,
     }
+
+
+# ---------------------------------------------------------------------------
+# _compute_base_score — owns the ×10 arithmetic the model does unreliably
+# ---------------------------------------------------------------------------
+
+_FULL_DIMS = {
+    "technical_fit": 6,
+    "seniority_match": 8,
+    "domain_fit": 4,
+    "remote_canada_confirmed": 10,
+    "role_clarity": 9,
+}
+
+
+def test_compute_base_score_applies_weights_and_x10():
+    # 0.35*6 + 0.25*8 + 0.20*4 + 0.10*10 + 0.10*9 = 6.8 → ×10 = 68
+    assert _compute_base_score(_FULL_DIMS, fallback=999) == 68
+
+
+def test_compute_base_score_ignores_model_base_score_field():
+    # The regression: model emitted the raw 1–10 average (7) in base_score, but
+    # the dimensions are correct. We must derive 68, not trust the 7.
+    assert _compute_base_score(_FULL_DIMS, fallback=7) == 68
+
+
+def test_compute_base_score_uniform_dims():
+    assert _compute_base_score(dict.fromkeys(_FULL_DIMS, 5), fallback=0) == 50
+    assert _compute_base_score(dict.fromkeys(_FULL_DIMS, 10), fallback=0) == 100
+
+
+def test_compute_base_score_falls_back_when_dimensions_missing():
+    assert _compute_base_score({"technical_fit": 8}, fallback=73) == 73
+
+
+def test_compute_base_score_falls_back_when_dimensions_non_numeric():
+    bad = {**_FULL_DIMS, "domain_fit": "n/a"}
+    assert _compute_base_score(bad, fallback=42) == 42
+
+
+def test_compute_base_score_default_50_when_fallback_unusable():
+    assert _compute_base_score({}, fallback=None) == 50
+
+
+def test_compute_base_score_clamps_fallback():
+    assert _compute_base_score({}, fallback=500) == 100
+    assert _compute_base_score({}, fallback=-3) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +334,16 @@ def test_score_one_clamps_to_1():
         ),
     )
     assert result["final_score"] == 1
+
+
+def test_score_one_overrides_unmultiplied_model_base_score():
+    # Regression: the model returns correct dimensions but the raw 1–10 average
+    # (7) in base_score instead of 68. _score_one must recompute from dimensions,
+    # not collapse the final score to ~1.
+    client = _api_response(base_score=7, dimension_scores=dict(_FULL_DIMS))
+    result = _score_one(client, _posting())
+    assert result["base_score"] == 68
+    assert result["final_score"] == 68  # no age/competition modifiers on _posting()
 
 
 # ---------------------------------------------------------------------------
@@ -757,7 +821,8 @@ def test_score_batch_ratchets_company_flags(tmp_path):
     _make_db(db_path)
     _insert_posting(db_path, "https://example.com/job/1", "Acme Corp", "Principal Engineer")
 
-    client = _api_response(base_score=78)  # default dims are all 8 → remote/Canada confirmed
+    # remote_canada_confirmed ≥ 8 → company remote/Canada flags ratchet on
+    client = _api_response(dimension_scores=dict.fromkeys(_FULL_DIMS, 8))
 
     with (
         patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
