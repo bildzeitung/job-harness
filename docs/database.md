@@ -7,6 +7,9 @@ Three tables:
 - **`companies`** — one row per hiring company; persists research findings and remote/Canada confirmation across pipeline runs.
 - **`company_postings`** — links each posting to its hiring company (1 company : N postings).
 
+Plus one vector sidecar:
+- **`postings_vec`** — a [sqlite-vec](https://github.com/asg017/sqlite-vec) virtual table holding a 1024-dim embedding per posting (keyed by URL, cosine distance), created and loaded by `make_engine`. Powers semantic repost-dedup and score-reuse; see [embeddings.md](embeddings.md).
+
 ## Table: `postings`
 
 One row per job posting URL. The URL is the natural primary key — duplicate inserts are silently ignored (`INSERT OR IGNORE`).
