@@ -5,7 +5,7 @@ flowchart TD
 
     %% ─── STAGE 1: SEEK ───────────────────────────────────────────────────────
     subgraph SEEK ["STAGE 1 — SEEK"]
-        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator<br>① Read jobs/sources-config.json  (which sources are enabled)<br>② Generate candidate-summary.json  (cached per day)<br>③ Init SQLite schema  (postings + companies tables)<br>④ MCP connectivity probe  (LinkedIn · Indeed · ZipRecruiter)"]
+        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator<br>① Read jobs/sources-config.json  (which sources are enabled)<br>② Generate candidate-summary.json  (cached per day; from resume + target-roles.md)<br>③ Init SQLite schema  (postings + companies tables)<br>④ Seed config if missing  (disqualifiers.yaml · target-roles.md)<br>⑤ MCP connectivity probe  (LinkedIn · Indeed · ZipRecruiter)"]
 
         SUB_LI["job-seeker-linkedin<br>LinkedIn MCP"]
         SUB_IND["job-seeker-indeed<br>Indeed MCP"]

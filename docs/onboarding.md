@@ -199,13 +199,28 @@ before LinkedIn is wired up.
 
 ---
 
-## 8. (Optional) Tune your disqualifiers
+## 8. (Optional) Tune your search config
 
-The pipeline's hard exclusions live in one user-editable file,
-`$JOB_DATA_ROOT/disqualifiers.yaml`. You do **not** have to create it — the first
-run seeds it from the shipped template
-([`harness-db/harness_db/disqualifiers.default.yaml`](../harness-db/harness_db/disqualifiers.default.yaml)).
+Two user-editable files in `$JOB_DATA_ROOT` steer the search. You do **not** have
+to create either — the first run seeds each from a shipped template if it is
+missing, and never overwrites a copy you have tuned. They are complementary:
+`target-roles.md` says what to **look for**, `disqualifiers.yaml` says what to
+**drop**.
 
+### Target roles — what to look for
+
+`$JOB_DATA_ROOT/target-roles.md` is the canonical list of **positive targets**:
+the role titles, the title keywords that drive search queries and seniority
+filtering, and your domains of interest. Every `job-seeker` searcher reads it,
+and it feeds the generated `candidate-summary.json`. Seeded from
+[`harness-db/harness_db/target-roles.default.md`](../harness-db/harness_db/target-roles.default.md)
+(a senior-engineering starter) — edit the **Title Keywords** and **Domains**
+sections to match the roles you actually want.
+
+### Disqualifiers — what to drop
+
+`$JOB_DATA_ROOT/disqualifiers.yaml` holds the hard **exclusions**, seeded from
+[`harness-db/harness_db/disqualifiers.default.yaml`](../harness-db/harness_db/disqualifiers.default.yaml).
 It has two independent parts:
 
 - **`prefilter`** — postings whose title/summary match these phrases are dropped
@@ -215,10 +230,9 @@ It has two independent parts:
   scoring (e.g. requires a named certification → −40).
 
 This is the **single source of truth** for exclusions, read by the searchers,
-the scorer, and `job-preparer`. Positive targets (titles, domains, seniority)
-are *not* here — those are derived from your resume. Edit this file to tune
-behavior; see [job-states.md](job-states.md) and [database.md](database.md) for
-how the two mechanisms differ.
+the scorer, and `job-preparer`. Edit it to tune behavior; see
+[job-states.md](job-states.md) and [database.md](database.md) for how the two
+mechanisms differ.
 
 ---
 

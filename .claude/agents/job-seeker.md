@@ -22,7 +22,7 @@ If the file already exists **and** its `generated` field matches today's date, s
 
 Otherwise:
 1. Read `bash -c 'echo $RESUME_FILE'` to get the resume path, then read the YAML file.
-2. Read `cat /home/dmklein/PROJECTS/resume/2026/harness/target-roles.md`
+2. Read `cat "$JOB_DATA_ROOT/target-roles.md"` (seeded in Step 0e — the user-editable list of target titles, keywords, and domains).
 3. Read `cat /home/dmklein/PROJECTS/resume/2026/harness/candidate-highlights.md`
 4. Synthesize and write `$JOB_DATA_ROOT/candidate-summary.json`:
 
@@ -104,6 +104,21 @@ The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) ar
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
 [ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/disqualifiers.default.yaml" "$DEST"
+```
+
+Do not overwrite an existing copy — the user may have tuned it.
+
+## Step 0e: Ensure Target-Roles Config Exists
+
+The user's target role titles, title keywords, and domains of interest live in
+one user-editable file: `$JOB_DATA_ROOT/target-roles.md`. Step 0 (candidate
+summary) and every searcher read it as the canonical list of positive targets.
+If it does not exist, seed it from the bundled starter template:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+DEST="$JOB_DATA_ROOT/target-roles.md"
+[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/target-roles.default.md" "$DEST"
 ```
 
 Do not overwrite an existing copy — the user may have tuned it.
