@@ -31,22 +31,24 @@ _PUPPETEER_CONFIG = {
 
 @nox.session(venv_backend="none", tags=["docs", "lint"])
 def docs_mermaid(session):
-    """Validate every ```mermaid block in docs/*.md via mermaid-cli in Docker.
+    """Validate mermaid diagrams in docs/ via mermaid-cli in Docker.
 
-    mmdc parses each fenced mermaid block and exits non-zero on the first
-    syntax error. Runs in Docker so no Node/Chromium toolchain leaks into the
-    Python venvs. Requires Docker on PATH.
+    Covers both ```mermaid blocks inside docs/*.md and standalone docs/*.mmd
+    files. mmdc parses each diagram and exits non-zero on the first syntax
+    error. Runs in Docker so no Node/Chromium toolchain leaks into the Python
+    venvs. Requires Docker on PATH.
     """
     if not _have_docker(session):
         session.error("docker not found on PATH — required for mermaid validation")
 
-    md_files = sorted(
+    sources = sorted(
         p
         for p in DOCS_DIR.glob("*.md")
         if "```mermaid" in p.read_text(encoding="utf-8")
     )
-    if not md_files:
-        session.log("no docs/*.md contain a mermaid block — nothing to validate")
+    sources += sorted(DOCS_DIR.glob("*.mmd"))
+    if not sources:
+        session.log("no mermaid diagrams found in docs/ — nothing to validate")
         return
 
     repo = DOCS_DIR.parent
@@ -58,9 +60,11 @@ def docs_mermaid(session):
         os.chmod(cfg_dir, 0o755)
         os.chmod(cfg_path, 0o644)
 
-        for md in md_files:
-            rel = md.relative_to(repo).as_posix()
+        for src in sources:
+            rel = src.relative_to(repo).as_posix()
             session.log(f"validating {rel}")
+            # .md emits a markdown copy; a bare .mmd needs an image output format.
+            out = "/tmp/out.md" if src.suffix == ".md" else "/tmp/out.svg"
             result = subprocess.run(
                 [
                     "docker",
@@ -78,7 +82,7 @@ def docs_mermaid(session):
                     "-i",
                     rel,
                     "-o",
-                    "/tmp/mermaid-validate.md",
+                    out,
                     "--quiet",
                 ],
                 check=False,
@@ -88,7 +92,7 @@ def docs_mermaid(session):
 
     if failures:
         session.error("mermaid syntax errors in: " + ", ".join(failures))
-    session.log(f"all {len(md_files)} doc(s) with mermaid blocks are valid")
+    session.log(f"all {len(sources)} mermaid diagram(s) in docs/ are valid")
 
 
 def _have_docker(session) -> bool:

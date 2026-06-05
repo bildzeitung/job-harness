@@ -64,6 +64,8 @@ erDiagram
 
 Each posting links to exactly one company through `company_postings` (`url` is that table's primary key), and a company can own many postings — so the company-to-posting relationship is **1 : N**. `postings_vec` is a parallel virtual table keyed by the same `url`; it carries no SQL foreign key but is kept in lock-step with `postings` by the application layer.
 
+> **Editing diagrams?** After changing any mermaid diagram in `docs/` (a ```mermaid block in a `.md` file, or a standalone `.mmd` file), validate it with `nox -s docs_mermaid` from the repo root. It runs the official `mermaid-cli` parser in Docker against every diagram and fails on the first syntax error, so a pass means the diagrams render on GitHub. Requires Docker.
+
 ## Table: `postings`
 
 One row per job posting URL. The URL is the natural primary key — duplicate inserts are silently ignored (`INSERT OR IGNORE`).
