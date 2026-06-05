@@ -9,14 +9,14 @@ flowchart TD
     end
 
     subgraph SEEK ["Stage 1 — Seek    (job-seeker)"]
-        S["Search all sources in parallel<br>Deduplicate · insert new postings"]
+        S["Search all sources in parallel<br>Deduplicate (URL + semantic repost) · insert new postings"]
     end
 
     DB[("postings.db")]
 
     subgraph SCORE ["Stage 2 — Score    (job-preparer)"]
         F["Pre-filter: hard disqualifiers → skip"]
-        SC["5-dimension fit score  1–100<br>Age + competition modifiers"]
+        SC["5-dimension fit score  1–100<br>Age + competition modifiers<br>(reuse a near-duplicate's score → no LLM call)"]
         F --> SC
     end
 

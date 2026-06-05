@@ -74,7 +74,7 @@ Twelve agents are configured in [.claude/agents/](.claude/agents/):
 - **resume-tailor** — Tailors the CV for a specific job posting (ATS bypass, gap analysis, keyword embedding).
 - **cover-letter-creator** — Writes a cover letter from the CV + a job description.
 
-**Job search harness agents** (see `docs/` for the workflow diagram, data flow, database schema, and job-state lifecycle):
+**Job search harness agents** (see `docs/` for the workflow diagram, data flow, database schema, job-state lifecycle, and semantic embeddings):
 - **job-seeker** — Orchestrator: spawns six platform searchers in parallel, merges results, deduplicates against the SQLite DB, inserts new postings, saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`.
 - **job-seeker-linkedin** — Searches LinkedIn via the LinkedIn MCP server (`mcp__linkedin__search_jobs`).
 - **job-seeker-indeed** — Searches Indeed via the Indeed MCP server.
