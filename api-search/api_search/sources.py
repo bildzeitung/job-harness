@@ -14,10 +14,12 @@ from __future__ import annotations
 import html
 import os
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -34,6 +36,14 @@ ASHBY_BOARD = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 WORKABLE_WIDGET = "https://apply.workable.com/api/v1/widget/accounts/{slug}"
 RECRUITEE_OFFERS = "https://{slug}.recruitee.com/api/offers/"
+HIMALAYAS_URL = "https://himalayas.app/jobs/api"
+WWR_RSS = "https://weworkremotely.com/categories/{category}.rss"
+
+# Region / location-restriction tokens that admit a Canadian applicant. Used to
+# keep the global remote-aggregator sources (Remotive, Himalayas, We Work
+# Remotely) Canada-relevant — a restriction naming only non-Canada regions
+# (e.g. "USA Only", "Europe Only") is dropped at the source.
+_CANADA_OK_TOKENS = ("canada", "worldwide", "anywhere", "americas", "north america", "global")
 
 # Cap on concurrent HTTP fetches within a single source (Adzuna queries, or
 # Greenhouse/Lever boards). httpx.Client is thread-safe, so each work item
@@ -88,6 +98,42 @@ def _epoch_ms_to_date(ms: Any) -> str | None:
         return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).date().isoformat()
     except (ValueError, OverflowError, OSError, TypeError):
         return None
+
+
+def _epoch_s_to_date(s: Any) -> str | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromtimestamp(int(s), tz=timezone.utc).date().isoformat()
+    except (ValueError, OverflowError, OSError, TypeError):
+        return None
+
+
+def _rfc822_to_date(value: str) -> str | None:
+    """Parse an RSS RFC-822 `pubDate` (e.g. 'Sun, 17 May 2026 20:30:53 +0000') to a date."""
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value).date().isoformat()
+    except (ValueError, TypeError):
+        return None
+
+
+def _rss_text(item: ET.Element, tag: str) -> str:
+    el = item.find(tag)
+    return (el.text or "").strip() if el is not None else ""
+
+
+def _canada_eligible(restriction: str) -> bool:
+    """True if a remote board's region/restriction string admits a Canadian applicant.
+
+    Empty/unknown restrictions are treated as eligible (don't over-filter); a
+    restriction that names regions but none Canada-inclusive is rejected.
+    """
+    r = (restriction or "").lower().strip()
+    if not r:
+        return True
+    return any(tok in r for tok in _CANADA_OK_TOKENS)
 
 
 # ── parallel fan-out ────────────────────────────────────────────────────────
@@ -277,19 +323,110 @@ def fetch_remotive(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[d
             print(f'[REMOTIVE] Query "{title}" failed: {e}', flush=True)
             return []
 
-        return [
-            {
-                "title": job.get("title", ""),
-                "company": (job.get("company_name") or "").strip(),
-                "url": job.get("url", ""),
-                "post_date": (job.get("publication_date") or "")[:10],
-                "location": job.get("candidate_required_location", "") or "",
-                "description": _strip_html(job.get("description", "")),
-            }
-            for job in jobs
-        ]
+        records = []
+        for job in jobs:
+            region = job.get("candidate_required_location", "") or ""
+            if not _canada_eligible(region):
+                continue
+            records.append(
+                {
+                    "title": job.get("title", ""),
+                    "company": (job.get("company_name") or "").strip(),
+                    "url": job.get("url", ""),
+                    "post_date": (job.get("publication_date") or "")[:10],
+                    "location": f"Remote — {region}" if region else "Remote",
+                    "description": _strip_html(job.get("description", "")),
+                }
+            )
+        return records
 
     yield from _fetch_in_parallel(summary["target_titles"], _fetch_query)
+
+
+HIMALAYAS_PAGE_SIZE = 20  # the public endpoint hard-caps each response at 20 jobs
+
+
+def fetch_himalayas(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
+    """Pull Canada-eligible postings from the Himalayas remote-jobs API.
+
+    Himalayas is a single recency-ordered feed (no keyword search) whose public
+    endpoint returns at most 20 jobs per request, so this pages through it with
+    `offset` (cfg `pages` × 20 postings) and drops any whose `locationRestrictions`
+    exclude Canada; seniority is left to the shared title filter.
+    """
+    offsets = [i * HIMALAYAS_PAGE_SIZE for i in range(cfg.get("pages", 10))]
+
+    def _fetch_page(offset: int) -> list[dict[str, Any]]:
+        try:
+            resp = client.get(
+                HIMALAYAS_URL, params={"limit": HIMALAYAS_PAGE_SIZE, "offset": offset}
+            )
+            resp.raise_for_status()
+            jobs = resp.json().get("jobs", [])
+        except Exception as e:
+            print(f"[HIMALAYAS] page offset={offset} failed: {e}", flush=True)
+            return []
+
+        records = []
+        for job in jobs:
+            restrictions = job.get("locationRestrictions") or []
+            region = (
+                ", ".join(restrictions) if isinstance(restrictions, list) else str(restrictions)
+            )
+            if not _canada_eligible(region):
+                continue
+            records.append(
+                {
+                    "title": job.get("title", ""),
+                    "company": job.get("companyName", ""),
+                    "url": job.get("applicationLink") or job.get("guid", ""),
+                    "post_date": _epoch_s_to_date(job.get("pubDate")),
+                    "location": f"Remote — {region}" if region else "Remote",
+                    "description": _strip_html(job.get("description", "")),
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(offsets, _fetch_page)
+
+
+def fetch_wwr(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
+    """Parse Canada-eligible postings from each configured We Work Remotely RSS category.
+
+    WWR item titles are ``"Company: Job Title"``; the `region` tag carries the
+    geographic restriction used to drop non-Canada-eligible roles.
+    """
+
+    def _fetch_category(category: str) -> list[dict[str, Any]]:
+        try:
+            resp = client.get(WWR_RSS.format(category=category))
+            resp.raise_for_status()
+            items = ET.fromstring(resp.text).findall(".//item")
+        except Exception as e:
+            print(f"[WWR] category '{category}' failed: {e}", flush=True)
+            return []
+
+        records = []
+        for item in items:
+            region = _rss_text(item, "region")
+            if not _canada_eligible(region):
+                continue
+            company, sep, title = _rss_text(item, "title").partition(": ")
+            if not sep:  # no "Company: Title" split — keep the whole string as the title
+                company, title = "", company
+            records.append(
+                {
+                    "title": title.strip(),
+                    "company": company.strip(),
+                    "url": _rss_text(item, "link"),
+                    "post_date": _rfc822_to_date(_rss_text(item, "pubDate")),
+                    "location": f"Remote — {region}" if region else "Remote",
+                    "description": _strip_html(_rss_text(item, "description")),
+                }
+            )
+        return records
+
+    yield from _fetch_in_parallel(cfg.get("categories", []), _fetch_category)
 
 
 def fetch_workable(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
@@ -418,6 +555,20 @@ SOURCES: dict[str, Source] = {
         employment_type="full-time",
         location_note="Remote",
         fetch=fetch_remotive,
+    ),
+    "himalayas": Source(
+        name="himalayas",
+        platform="himalayas",
+        employment_type="full-time",
+        location_note="Remote, Canada-eligible",
+        fetch=fetch_himalayas,
+    ),
+    "wwr": Source(
+        name="wwr",
+        platform="wwr",
+        employment_type="full-time",
+        location_note="Remote, Canada-eligible",
+        fetch=fetch_wwr,
     ),
 }
 

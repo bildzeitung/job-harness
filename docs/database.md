@@ -47,7 +47,7 @@ CREATE TABLE postings (
 | `url` | TEXT PK | Canonical job posting URL. Primary key; duplicates are ignored on insert. |
 | `title` | TEXT | Job title as listed on the posting. |
 | `company` | TEXT | Hiring company name. |
-| `platform` | TEXT | Source platform: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `greenhouse`, `lever`, `ashby`, `workable`, `recruitee`, `remotive`, `email`, `research`. |
+| `platform` | TEXT | Source platform: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `greenhouse`, `lever`, `ashby`, `workable`, `recruitee`, `remotive`, `himalayas`, `wwr`, `email`, `research`. |
 
 #### Posting metadata
 

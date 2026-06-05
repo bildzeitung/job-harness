@@ -2,16 +2,20 @@
 
 from api_search.sources import (
     SOURCES,
+    _canada_eligible,
     _epoch_ms_to_date,
+    _rfc822_to_date,
     _slug_to_name,
     _strip_html,
     fetch_adzuna,
     fetch_ashby,
     fetch_greenhouse,
+    fetch_himalayas,
     fetch_lever,
     fetch_recruitee,
     fetch_remotive,
     fetch_workable,
+    fetch_wwr,
     load_config,
 )
 from tests.conftest import FakeResp, make_client
@@ -52,6 +56,7 @@ def test_config_has_slugs_for_board_sources():
     assert cfg["ashby"]["slugs"]
     assert cfg["workable"]["slugs"]
     assert cfg["recruitee"]["slugs"]
+    assert cfg["wwr"]["categories"]
 
 
 def test_registry_platform_matches_name():
@@ -376,10 +381,26 @@ def test_fetch_remotive_normalizes_and_strips_html():
             "company": "Acme Corp",
             "url": "https://remotive.com/remote-jobs/1",
             "post_date": "2026-06-02",
-            "location": "Worldwide",
+            "location": "Remote — Worldwide",
             "description": "Fully remote senior role",
         }
     ]
+
+
+def test_fetch_remotive_drops_non_canada_eligible():
+    payload = {
+        "jobs": [
+            {
+                "title": "A",
+                "url": "u1",
+                "candidate_required_location": "USA Only",
+                "description": "",
+            },
+            {"title": "B", "url": "u2", "candidate_required_location": "Canada", "description": ""},
+        ]
+    }
+    jobs = list(fetch_remotive(make_client(lambda url, params: FakeResp(payload)), SUMMARY, {}))
+    assert [j["title"] for j in jobs] == ["B"]
 
 
 def test_fetch_remotive_skips_failed_query(capsys):
@@ -388,3 +409,107 @@ def test_fetch_remotive_skips_failed_query(capsys):
 
     assert list(fetch_remotive(make_client(route), SUMMARY, {})) == []
     assert "[REMOTIVE]" in capsys.readouterr().out
+
+
+# ── _canada_eligible ──────────────────────────────────────────────────────────
+
+
+def test_canada_eligible_rules():
+    assert _canada_eligible("") is True  # unknown → don't over-filter
+    assert _canada_eligible("Anywhere in the World") is True
+    assert _canada_eligible("Canada, United States") is True
+    assert _canada_eligible("North America Only") is True
+    assert _canada_eligible("USA Only") is False
+    assert _canada_eligible("Europe Only") is False
+    assert _canada_eligible("United States") is False
+
+
+def test_rfc822_to_date():
+    assert _rfc822_to_date("Sun, 17 May 2026 20:30:53 +0000") == "2026-05-17"
+    assert _rfc822_to_date("") is None
+    assert _rfc822_to_date("not a date") is None
+
+
+# ── fetch_himalayas ───────────────────────────────────────────────────────────
+
+
+def test_fetch_himalayas_keeps_canada_eligible_and_shapes():
+    payload = {
+        "jobs": [
+            {
+                "title": "Staff Engineer",
+                "companyName": "Acme",
+                "applicationLink": "https://himalayas.app/companies/acme/jobs/staff",
+                "guid": "https://himalayas.app/x",
+                "pubDate": 1780630888,
+                "locationRestrictions": ["Canada", "United States"],
+                "description": "<p>Remote role</p>",
+            },
+            {
+                "title": "US Only Role",
+                "companyName": "Beta",
+                "applicationLink": "u2",
+                "pubDate": 1780630888,
+                "locationRestrictions": ["United States"],
+                "description": "x",
+            },
+        ]
+    }
+    cfg = {"pages": 1}
+    jobs = list(fetch_himalayas(make_client(lambda url, params: FakeResp(payload)), SUMMARY, cfg))
+    assert [j["title"] for j in jobs] == ["Staff Engineer"]
+    assert jobs[0]["company"] == "Acme"
+    assert jobs[0]["url"] == "https://himalayas.app/companies/acme/jobs/staff"
+    assert jobs[0]["location"] == "Remote — Canada, United States"
+    assert jobs[0]["description"] == "Remote role"
+    assert jobs[0]["post_date"] == _epoch_ms_to_date(1780630888 * 1000)
+
+
+def test_fetch_himalayas_handles_fetch_failure(capsys):
+    def route(url, params):
+        raise RuntimeError("boom")
+
+    assert list(fetch_himalayas(make_client(route), SUMMARY, {"pages": 1})) == []
+    assert "[HIMALAYAS]" in capsys.readouterr().out
+
+
+# ── fetch_wwr ─────────────────────────────────────────────────────────────────
+
+WWR_RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>Acme Corp: Staff Engineer</title>
+    <region>Anywhere in the World</region>
+    <link>https://weworkremotely.com/remote-jobs/acme-staff</link>
+    <pubDate>Sun, 17 May 2026 20:30:53 +0000</pubDate>
+    <description>&lt;p&gt;Remote senior role&lt;/p&gt;</description>
+  </item>
+  <item>
+    <title>Beta Inc: Local Dev</title>
+    <region>USA Only</region>
+    <link>u2</link>
+    <pubDate>Sun, 17 May 2026 20:30:53 +0000</pubDate>
+    <description>x</description>
+  </item>
+</channel></rss>"""
+
+
+def test_fetch_wwr_splits_title_filters_region_and_shapes():
+    cfg = {"categories": ["remote-programming-jobs"]}
+    jobs = list(
+        fetch_wwr(make_client(lambda url, params: FakeResp(None, text=WWR_RSS_XML)), SUMMARY, cfg)
+    )
+    assert [j["title"] for j in jobs] == ["Staff Engineer"]
+    assert jobs[0]["company"] == "Acme Corp"
+    assert jobs[0]["url"] == "https://weworkremotely.com/remote-jobs/acme-staff"
+    assert jobs[0]["post_date"] == "2026-05-17"
+    assert jobs[0]["location"] == "Remote — Anywhere in the World"
+    assert jobs[0]["description"] == "Remote senior role"
+
+
+def test_fetch_wwr_skips_failed_category(capsys):
+    def route(url, params):
+        raise RuntimeError("boom")
+
+    assert list(fetch_wwr(make_client(route), SUMMARY, {"categories": ["x"]})) == []
+    assert "[WWR]" in capsys.readouterr().out

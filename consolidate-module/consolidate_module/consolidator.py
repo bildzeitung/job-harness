@@ -32,6 +32,8 @@ PLATFORMS = [
     "workable",
     "recruitee",
     "remotive",
+    "himalayas",
+    "wwr",
     "research",
 ]
 

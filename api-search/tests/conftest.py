@@ -8,9 +8,10 @@ import pytest
 
 
 class FakeResp:
-    def __init__(self, payload, status: int = 200):
+    def __init__(self, payload, status: int = 200, text: str = ""):
         self._payload = payload
         self.status = status
+        self.text = text
 
     def raise_for_status(self):
         if self.status >= 400:

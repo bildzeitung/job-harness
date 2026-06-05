@@ -7,6 +7,8 @@
 # workable   : Workable public widget API, one board per slug (the {slug}.workable.com id).
 # recruitee  : Recruitee public offers API, one board per slug (the {slug}.recruitee.com id).
 # remotive   : Remotive remote-jobs API, keyword search driven by target_titles.
+# himalayas  : Himalayas remote-jobs API, latest `limit` postings, Canada-eligible only.
+# wwr        : We Work Remotely RSS feeds, one per category, Canada-eligible only.
 
 adzuna:
   results_per_page: 50
@@ -115,3 +117,17 @@ recruitee:
 remotive:
   # Max results per target-title query (Remotive caps at the board size).
   limit: 50
+
+himalayas:
+  # Number of 20-posting pages to page through the recency-ordered feed (the
+  # public endpoint caps each request at 20). Canada-eligible senior roles are
+  # sparse in any window, so scan a few hundred postings.
+  pages: 15
+
+wwr:
+  # We Work Remotely RSS category slugs (weworkremotely.com/categories/{slug}.rss).
+  categories:
+    - remote-programming-jobs
+    - remote-full-stack-programming-jobs
+    - remote-back-end-programming-jobs
+    - remote-devops-sysadmin-jobs

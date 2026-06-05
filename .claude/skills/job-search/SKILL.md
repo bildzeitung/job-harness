@@ -20,7 +20,7 @@ The 7 available sources are: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `gr
 Ask:
 
 > Which sources should be skipped this run? Reply with a comma-separated list, or leave empty / say "none" to run all.
-> Available: `linkedin` (MCP, needs active browser session), `indeed` (MCP), `adzuna` (REST API), `ziprecruiter` (MCP), `greenhouse` (Greenhouse.io + Lever.co + Ashby + Workable + Recruitee public ATS APIs), `remotive` (Remotive remote-jobs API), `research` (non-job-board: Wellfound, funded startups, niche boards).
+> Available: `linkedin` (MCP, needs active browser session), `indeed` (MCP), `adzuna` (REST API), `ziprecruiter` (MCP), `greenhouse` (Greenhouse.io + Lever.co + Ashby + Workable + Recruitee public ATS APIs), `remotive` (Remotive + Himalayas + We Work Remotely remote-jobs boards, Canada-eligible), `research` (non-job-board: Wellfound, funded startups, niche boards, Canada boards like Job Bank).
 
 Parse the reply: split on commas, trim whitespace, lowercase, and keep only values matching the 7 known source names (ignore anything unrecognized). Compute `enabled_sources` as all 7 minus the parsed skip list.
 

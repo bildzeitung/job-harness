@@ -21,6 +21,8 @@ Researched 2026-06-04.
 | **Workable** | Public ATS widget API (slug fan-out) | `job-seeker-greenhouse` → `api_search workable` |
 | **Recruitee** | Public ATS offers API (slug fan-out) | `job-seeker-greenhouse` → `api_search recruitee` |
 | **Remotive** | Public remote-jobs API (keyword) | `job-seeker-remotive` → `api_search remotive` |
+| **Himalayas** | Public remote-jobs API (recency feed) | `job-seeker-remotive` → `api_search himalayas` |
+| **We Work Remotely** | RSS category feeds | `job-seeker-remotive` → `api_search wwr` |
 | Open-ended research | WebSearch / WebFetch | `job-seeker-research` |
 
 Ashby, Workable, and Recruitee were added to the `greenhouse` ATS agent (2026-06-04
@@ -32,9 +34,20 @@ EU/SMB, so each fetcher folds the board's own remote flag (`telecommuting` /
 `canada_confirmed` flag is the same optimistic default the rest of the ATS bundle
 uses — actual eligibility is enforced downstream by the scorer / `job-preparer`.
 
-Remotive is its own source/agent because it is a keyword aggregator (different
-mechanism) and global-remote: it does **not** establish Canada eligibility at the
-source, so it enriches `remote_confirmed` only.
+Remotive, Himalayas, and We Work Remotely are global remote-jobs boards bundled
+into the `job-seeker-remotive` agent (the `remotive` source). They share a
+different mechanism from the ATS sources — keyword search (Remotive), a recency
+feed (Himalayas), and RSS category feeds (WWR) — and a different DB-enrichment
+rule: `remote_confirmed` only, never `canada_confirmed`, because they confirm
+remote but not a Canada-based office.
+
+**Canada relevance:** Himalayas (`locationRestrictions`) and WWR (`region`) carry
+an explicit per-posting geographic restriction, and Remotive carries
+`candidate_required_location`. A shared `_canada_eligible()` helper drops any
+posting whose restriction names only non-Canada regions (e.g. "USA Only",
+"Europe Only") **at the source**, so a Canadian doesn't wade through ineligible
+roles. Empty/unknown restrictions are kept (don't over-filter); final eligibility
+is still confirmed downstream by the scorer / `job-preparer`.
 
 ### Adding more boards is config, not code
 
@@ -99,12 +112,18 @@ Sources: [JSearch (OpenWeb Ninja)](https://www.openwebninja.com/api/jsearch) ·
 
 ## Canada-centric, research/scrape only (no clean public API)
 
-Fold into `job-seeker-research`'s `site:` rounds rather than `api_search`:
+These Canada-focused boards have **no machine-readable feed**, so they cannot be
+`api_search` sources (the module is API/RSS only, no HTML scraping). They live in
+`job-seeker-research`'s **Round 2b: Canada-Centric Boards** `site:` queries:
 
-- **Job Bank Canada** (`jobbank.gc.ca`) — federal board; offers only an **inbound**
-  employer XML feed, no outbound query API.
-- **We Work Remotely** (`weworkremotely.com`) — has RSS category feeds
-  (e.g. `/categories/remote-programming-jobs.rss`); borderline `api_search`
-  candidate if an RSS fetch is wanted.
-- **NoDesk**, **TrueUp** (`trueup.io/canada`), **Remote Rocketship**, **Arc.dev**,
-  **Himalayas** — curated Canada-remote tech boards; no free query API.
+- **Job Bank Canada** (`jobbank.gc.ca`) — the federal board. Offers only an
+  **inbound** employer XML feed; `?rss=1` just returns the HTML search page and
+  the dedicated RSS path 404s, so there is no outbound query API to consume.
+- **NoDesk** (`nodesk.co`), **TrueUp** (`trueup.io/canada`),
+  **Remote Rocketship** (`remoterocketship.com/ca`), **Arc.dev** — curated
+  Canada-remote tech boards; no free query API.
+
+Two boards from the original Tier-3 list **did** expose a feed and are now wired
+in as `api_search` sources (see the table at the top): **Himalayas** (JSON
+recency feed) and **We Work Remotely** (RSS category feeds), both filtered to
+Canada-eligible postings.

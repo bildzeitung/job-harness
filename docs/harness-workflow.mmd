@@ -14,8 +14,8 @@ flowchart TD
         SUB_ZIP["job-seeker-ziprecruiter<br>ZipRecruiter MCP"]
         SUB_ADZ["job-seeker-adzuna<br>Adzuna Canada REST API"]
         SUB_GH["job-seeker-greenhouse<br>Greenhouse · Lever · Ashby · Workable · Recruitee public ATS APIs"]
-        SUB_REM["job-seeker-remotive<br>Remotive remote-jobs API"]
-        SUB_RES["job-seeker-research<br>Wellfound · funded startups · niche boards<br>→ UPSERT companies (notes · remote/Canada confirmed)"]
+        SUB_REM["job-seeker-remotive<br>Remotive · Himalayas · We Work Remotely<br>remote-jobs boards (Canada-eligible)"]
+        SUB_RES["job-seeker-research<br>Wellfound · funded startups · niche boards<br>Canada boards (Job Bank · TrueUp · NoDesk)<br>→ UPSERT companies (notes · remote/Canada confirmed)"]
 
         S_DONE["consolidate_module  (Python)<br>Merge per-platform temp files  ·  deduplicate against existing DB URLs<br>Audit log → jobs/search-YYYY-MM-DD.json<br>INSERT OR IGNORE postings (status = 'new')<br>Create companies row + company_postings link  (ON CONFLICT DO NOTHING)"]
 

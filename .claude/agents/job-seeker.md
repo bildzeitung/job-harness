@@ -92,7 +92,7 @@ Read `$JOB_DATA_ROOT/jobs/sources-config.json`. This file is written by the job-
 If the file exists: parse its `enabled` array and store as `enabled_sources`.
 If the file does not exist or cannot be read: default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
 
-Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever, Ashby, Workable, and Recruitee); `remotive` is its own source/agent.
+Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever, Ashby, Workable, and Recruitee); the `remotive` source runs three remote-jobs boards in one agent (Remotive, Himalayas, and We Work Remotely).
 
 Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
 
@@ -131,7 +131,7 @@ In a single message, spawn all eligible sub-agents at the same time using the Ag
 No-MCP sources — spawn only if in `enabled_sources`:
 - `subagent_type: job-seeker-adzuna` — if `adzuna` in `enabled_sources`
 - `subagent_type: job-seeker-greenhouse` — if `greenhouse` in `enabled_sources` (runs Greenhouse + Lever + Ashby + Workable + Recruitee)
-- `subagent_type: job-seeker-remotive` — if `remotive` in `enabled_sources`
+- `subagent_type: job-seeker-remotive` — if `remotive` in `enabled_sources` (runs Remotive + Himalayas + We Work Remotely)
 - `subagent_type: job-seeker-research` — if `research` in `enabled_sources`
 
 MCP-dependent sources — spawn only if in `enabled_sources` **and** the probe succeeded:
@@ -154,6 +154,8 @@ You may be running as a sub-agent yourself (e.g. spawned by the `job-search` ski
   python -m api_search workable    # writes workable-{date}.json
   python -m api_search recruitee   # writes recruitee-{date}.json
   python -m api_search remotive    # writes remotive-{date}.json
+  python -m api_search himalayas   # writes himalayas-{date}.json
+  python -m api_search wwr         # writes wwr-{date}.json
   ```
 - **linkedin / indeed / ziprecruiter** — call their MCP tools directly (they are in your own tool list) and write the `{platform}-{date}.json` files yourself in the consolidator schema.
 - **research** has no deterministic module — it needs reasoning over web results. Run it **inline using your own `WebSearch` and `WebFetch` tools**, following the search strategy and NON-NEGOTIABLE requirements in the `job-seeker-research` agent definition (recently funded companies, Wellfound/Ashby/niche boards, FHIR-specific roles; remote + Canada-eligible + senior only). Write the results to `$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.json` in the same consolidator-ready posting schema the other sources use (`platform: "research"`, with `title`, `company`, `url`, `post_date`, `applicant_count`, `employment_type`, `location_note`, `description_summary`), exactly as the `job-seeker-research` sub-agent would.
@@ -171,6 +173,8 @@ Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes fi
 - `job-data/jobs/workable-{YYYY-MM-DD}.json` (also from the greenhouse agent)
 - `job-data/jobs/recruitee-{YYYY-MM-DD}.json` (also from the greenhouse agent)
 - `job-data/jobs/remotive-{YYYY-MM-DD}.json`
+- `job-data/jobs/himalayas-{YYYY-MM-DD}.json` (also from the remotive agent)
+- `job-data/jobs/wwr-{YYYY-MM-DD}.json` (also from the remotive agent)
 - `job-data/jobs/research-{YYYY-MM-DD}.json`
 
 Wait for all spawned agents to complete before proceeding.
