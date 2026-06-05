@@ -18,6 +18,10 @@ An AI harness that searches for jobs. Currently, it searches:
 
 ## Setup
 
+> **New here?** [`docs/onboarding.md`](docs/onboarding.md) walks you from a fresh
+> clone all the way to your first `/job-search` run — including creating a resume
+> YAML from scratch, which the steps below assume you already have.
+
 The harness's semantic dedup/similarity layer uses
 [sqlite-vec](https://github.com/asg017/sqlite-vec), so your Python v3.14.5 must
 have loadable extension support for sqlite3 enabled. `init.sh` verifies this
