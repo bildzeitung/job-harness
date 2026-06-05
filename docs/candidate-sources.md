@@ -13,7 +13,6 @@ Researched 2026-06-04.
 | LinkedIn | MCP (browser session) | `job-seeker-linkedin` |
 | Indeed | MCP | `job-seeker-indeed` |
 | ZipRecruiter | MCP | `job-seeker-ziprecruiter` |
-| Gmail job alerts | MCP (Gmail) | `job-seeker-email` (standalone) |
 | Adzuna Canada | REST API (keyword) | `job-seeker-adzuna` → `api_search adzuna` |
 | Greenhouse | Public ATS board API (slug fan-out) | `job-seeker-greenhouse` → `api_search greenhouse` |
 | Lever | Public ATS board API (slug fan-out) | `job-seeker-greenhouse` → `api_search lever` |
