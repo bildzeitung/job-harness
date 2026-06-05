@@ -124,7 +124,7 @@ Report format:
   "title": "Principal Software Engineer",
   "company": "Acme Corp",
   "url": "https://...",
-  "platform": "linkedin|indeed|adzuna|greenhouse|ziprecruiter|email|research",
+  "platform": "linkedin|indeed|adzuna|greenhouse|ziprecruiter|research",
   "post_date": "YYYY-MM-DD",
   "applicant_count": null,
   "base_score": 74,
