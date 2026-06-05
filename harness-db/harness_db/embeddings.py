@@ -28,6 +28,13 @@ EMBED_DIM = int(os.environ.get("HARNESS_EMBED_DIM", "1024"))
 # compares the same text the scorer reasons over (scoring_module JD_TRUNCATE_LENGTH).
 _MAX_CHARS = 8000
 
+# Ollama serves embedding models with a small default context window (~2048
+# tokens) regardless of the model's true capacity, so a full _MAX_CHARS prompt
+# (~2300+ tokens, more for code-dense JDs) overflows it and Ollama returns HTTP
+# 500. qwen3-embedding:0.6b supports 32k, so we raise num_ctx to comfortably
+# cover the truncated input; this is trivial on-GPU for a 0.6b model.
+EMBED_NUM_CTX = int(os.environ.get("HARNESS_EMBED_NUM_CTX", "8192"))
+
 # One instruction applied to BOTH stored documents and lookup text. Keeping it
 # identical on both sides is what makes the cosine metric symmetric for dedup
 # (Qwen3-Embedding is instruction-tuned; an asymmetric query/document split is
@@ -46,7 +53,9 @@ def embed(text: str) -> bytes:
     import numpy as np
     import ollama
 
-    resp = ollama.embeddings(model=EMBED_MODEL, prompt=_format(text))
+    resp = ollama.embeddings(
+        model=EMBED_MODEL, prompt=_format(text), options={"num_ctx": EMBED_NUM_CTX}
+    )
     vec = np.asarray(resp["embedding"], dtype=np.float32)
     if vec.shape != (EMBED_DIM,):
         raise ValueError(

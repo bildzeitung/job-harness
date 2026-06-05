@@ -3,14 +3,18 @@
 Run after installing the harness and pulling the Ollama model::
 
     ollama pull qwen3-embedding:0.6b
-    python -m harness_db.backfill_embeddings
+    python -m harness_db.backfill_embeddings              # (re-)embed everything
+    python -m harness_db.backfill_embeddings --missing-only  # only postings not yet indexed
 
-Idempotent — re-running re-embeds (``INSERT OR REPLACE``), so this is also how
-you rebuild the index after switching ``HARNESS_EMBED_MODEL``.
+A full run re-embeds every posting (``INSERT OR REPLACE``), so it doubles as the
+rebuild after switching ``HARNESS_EMBED_MODEL``. ``--missing-only`` skips postings
+already in ``postings_vec`` — use it to resume an interrupted run or to catch up
+new rows cheaply.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 from sqlalchemy import select
@@ -26,13 +30,30 @@ def _text_for(p: Posting) -> str:
     return (p.job_description_text or p.description_summary or p.title or "").strip()
 
 
-def main() -> int:
+def _indexed_urls(engine) -> set[str]:
+    """URLs already present in postings_vec."""
+    raw = engine.raw_connection()
+    try:
+        cur = raw.cursor()
+        cur.execute("SELECT url FROM postings_vec")
+        return {row[0] for row in cur.fetchall()}
+    finally:
+        raw.close()
+
+
+def main(missing_only: bool = False) -> int:
     engine = make_engine(get_db_path())
     with Session(engine) as session:
         postings = list(session.scalars(select(Posting)))
 
+    already = _indexed_urls(engine) if missing_only else set()
+
     done = 0
+    skipped = 0
     for p in postings:
+        if missing_only and p.url in already:
+            skipped += 1
+            continue
         text = _text_for(p)
         if not text:
             continue
@@ -43,9 +64,17 @@ def main() -> int:
         except Exception as exc:  # keep going; one bad row shouldn't abort the run
             print(f"[ERROR] {p.url}: {exc}", file=sys.stderr, flush=True)
 
-    print(f"[DONE] embedded {done}/{len(postings)} postings", flush=True)
+    tail = f" (skipped {skipped} already-indexed)" if missing_only else ""
+    print(f"[DONE] embedded {done}/{len(postings)} postings{tail}", flush=True)
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description="Backfill posting embeddings into postings_vec.")
+    parser.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="Skip postings already present in postings_vec (resume / incremental catch-up).",
+    )
+    args = parser.parse_args()
+    raise SystemExit(main(missing_only=args.missing_only))
