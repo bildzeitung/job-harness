@@ -22,7 +22,7 @@ Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory.
 
 ## Candidate Profile
 
-Key candidate strengths (kept in sync with `harness/candidate-highlights.md`):
+Key candidate strengths (kept in sync with `$JOB_DATA_ROOT/candidate-highlights.md`):
 - 20+ years software engineering, 13 at Oracle
 - OCI, Azure, AWS, Kubernetes, Terraform, Helm
 - Python, Java, C#, SQL, GraphQL

@@ -23,7 +23,7 @@ If the file already exists **and** its `generated` field matches today's date, s
 Otherwise:
 1. Read `bash -c 'echo $RESUME_FILE'` to get the resume path, then read the YAML file.
 2. Read `cat "$JOB_DATA_ROOT/target-roles.md"` (seeded in Step 0e — the user-editable list of target titles, keywords, and domains).
-3. Read `cat /home/dmklein/PROJECTS/resume/2026/harness/candidate-highlights.md`
+3. Read `cat "$JOB_DATA_ROOT/candidate-highlights.md"` (seeded in Step 0e — the user-editable quick-reference profile).
 4. Synthesize and write `$JOB_DATA_ROOT/candidate-summary.json`:
 
 ```json
@@ -108,17 +108,24 @@ DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
 
 Do not overwrite an existing copy — the user may have tuned it.
 
-## Step 0e: Ensure Target-Roles Config Exists
+## Step 0e: Ensure Positive-Target Config Exists
 
-The user's target role titles, title keywords, and domains of interest live in
-one user-editable file: `$JOB_DATA_ROOT/target-roles.md`. Step 0 (candidate
-summary) and every searcher read it as the canonical list of positive targets.
-If it does not exist, seed it from the bundled starter template:
+Two user-editable files hold the candidate's positive search inputs, both read
+by Step 0 (candidate summary) and every searcher:
+
+- `$JOB_DATA_ROOT/target-roles.md` — target role titles, title keywords, and
+  domains of interest (the canonical list of positive targets).
+- `$JOB_DATA_ROOT/candidate-highlights.md` — the quick-reference candidate
+  profile (notable experience, stack, location, certifications).
+
+If either is missing, seed it from its bundled starter template:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-DEST="$JOB_DATA_ROOT/target-roles.md"
-[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/target-roles.default.md" "$DEST"
+for f in target-roles candidate-highlights; do
+  DEST="$JOB_DATA_ROOT/$f.md"
+  [ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/$f.default.md" "$DEST"
+done
 ```
 
 Do not overwrite an existing copy — the user may have tuned it.
