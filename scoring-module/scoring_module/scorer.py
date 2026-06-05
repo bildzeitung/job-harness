@@ -15,10 +15,12 @@ import anthropic
 import httpx
 from harness_db.config import get_db_path
 from harness_db.disqualifiers import load_disqualifiers
-from harness_db.models import Posting, make_engine
+from harness_db.models import Company, Posting, make_engine
 from harness_db.profile import load_candidate_summary
 from harness_db.vectors import find_duplicate, upsert_vector
+from sqlalchemy import func
 from sqlalchemy import update as sa_update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 TODAY = date.today().isoformat()
@@ -393,8 +395,74 @@ def _update_db(engine, result: dict[str, Any]) -> None:
             session.commit()
 
 
-def score_batch(batch_file: str) -> int:
-    """Score all postings in a batch file. Returns count of successfully scored postings."""
+def _upsert_company(engine, result: dict[str, Any]) -> None:
+    """Ratchet the hiring company's remote/Canada confirmation flags.
+
+    A posting whose `remote_canada_confirmed` dimension scores ≥ 8 explicitly
+    confirms remote + Canada eligibility, so we set both flags. `MAX()` makes the
+    flags monotonic (0→1, never 1→0) so a later vaguer posting cannot downgrade a
+    company another posting already confirmed. `last_seen_date` always advances.
+    """
+    company = (result.get("company") or "").strip()
+    if not company:
+        return
+    dims = result.get("dimension_scores") or {}
+    confirmed = 1 if (dims.get("remote_canada_confirmed") or 0) >= 8 else 0
+    stmt = sqlite_insert(Company).values(
+        name=company,
+        remote_confirmed=confirmed,
+        canada_confirmed=confirmed,
+        last_seen_date=TODAY,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["name"],
+        set_={
+            "remote_confirmed": func.max(
+                func.coalesce(Company.remote_confirmed, 0), stmt.excluded.remote_confirmed
+            ),
+            "canada_confirmed": func.max(
+                func.coalesce(Company.canada_confirmed, 0), stmt.excluded.canada_confirmed
+            ),
+            "last_seen_date": stmt.excluded.last_seen_date,
+        },
+    )
+    # Best-effort, like vector indexing: the company flags are enrichment, so a
+    # failure here (e.g. a legacy DB without the companies table) must not fail
+    # the posting's score, which is already committed by _update_db.
+    try:
+        with _DB_WRITE_LOCK:
+            with Session(engine) as session:
+                session.execute(stmt)
+                session.commit()
+    except Exception as exc:
+        print(f"[WARN] could not ratchet company {company!r}: {exc}", file=sys.stderr)
+
+
+def _process(engine, client, reports_dir: Path, posting: dict[str, Any]) -> dict[str, Any]:
+    """Score one posting, persist it, ratchet its company, and index its vector."""
+    dup = _find_scored_duplicate(engine, posting)
+    if dup is not None:
+        dup_posting, dist = dup
+        result = _reuse_result(posting, dup_posting, dist)
+        reused = True
+    else:
+        result = _score_one(client, posting)
+        reused = False
+    _save_report(result, reports_dir)
+    _update_db(engine, result)
+    _upsert_company(engine, result)
+    if not reused:
+        # Reposts collapse onto the canonical posting, so only index fresh scores.
+        _index_vector(engine, result)
+    print(
+        f"[{'REUSED' if reused else 'SCORED'}] {result['company']} — "
+        f"{result['title']}: {result['final_score']}/100",
+        flush=True,
+    )
+    return result
+
+
+def _resolve_db_path() -> Path:
     if not JOB_DATA_ROOT:
         raise RuntimeError(
             "JOB_DATA_ROOT not set — cannot save reports; aborting. "
@@ -402,35 +470,63 @@ def score_batch(batch_file: str) -> int:
         )
     # SQLITE_DB_PATH is an optional override; otherwise resolve the canonical
     # JOB_DATA_ROOT/jobs/postings.db the same way every other front-end does.
-    db_path = Path(DB_PATH) if DB_PATH else get_db_path()
+    return Path(DB_PATH) if DB_PATH else get_db_path()
+
+
+def _reports_dir() -> Path:
+    return Path(JOB_DATA_ROOT) / "jobs" / "reports"
+
+
+def score_url(url: str) -> int:
+    """Score a single posting already in the DB, by URL. Returns 1 on success, else 0.
+
+    Powers the interactive single-posting "Score" action in the TUI and web UI,
+    replacing the former job-scorer agent. Shares the batch scoring path, so it
+    also reuses near-duplicate verdicts and ratchets the company flags.
+    """
+    engine = make_engine(_resolve_db_path())
+    with Session(engine) as session:
+        row = session.get(Posting, url)
+        if row is None:
+            print(f"[ERROR] no posting in DB for URL {url!r}", file=sys.stderr, flush=True)
+            return 0
+        posting = {
+            "url": row.url,
+            "title": row.title or "",
+            "company": row.company or "",
+            "platform": row.platform or "",
+            "post_date": row.post_date,
+            "applicant_count": row.applicant_count,
+            "description_summary": row.description_summary or "",
+            "job_description_text": row.job_description_text or "",
+        }
+    client = _make_client()
+    try:
+        _process(engine, client, _reports_dir(), posting)
+    except Exception as exc:
+        print(
+            f"[ERROR] {posting['company'] or '?'} — {posting['title'] or '?'}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 0
+    print(f"[BATCH DONE] Scored 1/1 postings from {url}", flush=True)
+    return 1
+
+
+def score_batch(batch_file: str) -> int:
+    """Score all postings in a batch file. Returns count of successfully scored postings."""
+    db_path = _resolve_db_path()
 
     with open(batch_file) as f:
         postings = json.load(f)
 
-    reports_dir = Path(JOB_DATA_ROOT) / "jobs" / "reports"
+    reports_dir = _reports_dir()
     client = _make_client()
     engine = make_engine(db_path)
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
-        dup = _find_scored_duplicate(engine, posting)
-        if dup is not None:
-            dup_posting, dist = dup
-            result = _reuse_result(posting, dup_posting, dist)
-            reused = True
-        else:
-            result = _score_one(client, posting)
-            reused = False
-        _save_report(result, reports_dir)
-        _update_db(engine, result)
-        if not reused:
-            # Reposts collapse onto the canonical posting, so only index fresh scores.
-            _index_vector(engine, result)
-        print(
-            f"[{'REUSED' if reused else 'SCORED'}] {result['company']} — "
-            f"{result['title']}: {result['final_score']}/100",
-            flush=True,
-        )
-        return result
+        return _process(engine, client, reports_dir, posting)
 
     scored_count = 0
     with ThreadPoolExecutor(max_workers=MAX_BATCH_WORKERS) as pool:

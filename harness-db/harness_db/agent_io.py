@@ -1,7 +1,8 @@
-"""Shared helpers for launching harness agents via the `claude` CLI.
+"""Shared helpers for launching harness work from the TUI and web app.
 
-Holds the stream-json event formatter and the score/prepare prompt builders so the
-TUI and the web app render agent output and build prompts identically.
+Holds the stream-json event formatter (for agent runs), the single-posting
+scoring command builder, and the prepare-agent prompt builder, so both
+front-ends render output and invoke work identically.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ __all__ = [
     "REJECTABLE_STATES",
     "PostingLike",
     "format_event",
-    "build_score_prompt",
+    "build_score_command",
     "build_prepare_prompt",
 ]
 
@@ -72,15 +73,15 @@ def format_event(event: dict) -> list[str]:
     return []
 
 
-def build_score_prompt(posting: PostingLike) -> str:
-    """Prompt to score a single 'new' posting and persist the result."""
-    return (
-        "Use the job-scorer agent to score a single job posting. "
-        f"The posting URL is: {posting.url}\n"
-        f"Company: {posting.company or 'unknown'}\n"
-        f"Title: {posting.title or 'unknown'}\n"
-        "Score this one posting only. Write the score to the database and set status to 'scored'."
-    )
+def build_score_command(posting: PostingLike) -> list[str]:
+    """Interpreter-agnostic argv to score a single posting via the scoring_module.
+
+    Returned without a leading interpreter so each runner can prepend its own
+    ``sys.executable`` (host venv for the TUI/local web, the agent-runner's venv
+    in Docker). The module reads the posting from the DB, scores it, persists the
+    result, and ratchets the company flags — no agent spawning involved.
+    """
+    return ["-m", "scoring_module", "--url", posting.url]
 
 
 def build_prepare_prompt(posting: PostingLike) -> str:

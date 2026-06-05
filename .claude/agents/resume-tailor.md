@@ -160,7 +160,7 @@ When your prompt contains an `output_dir` field (you were spawned by `job-pipeli
   ```
   Substitute the real absolute `{output_dir}` and names — do not leave the `OUTPUT_FOLDER`/`NAME_IN_SNAKE_CASE` placeholders. Replace the values if those keys already exist in the copied template; add them under `settings.render_command` if absent. An **absolute** `pdf_path` is deterministic: rendercv writes the PDF to exactly that path regardless of cwd or any `--output-folder` flag, so the slugged name is a property of the YAML itself and is correct no matter who renders it (the pipeline worker, an inline render, or a manual `rendercv render`). The resume PDF therefore lands at `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.pdf`.
 - **Skip step 6** (cover letter) — the pipeline calls `cover-letter-creator` separately
-- If the prompt also contains a `job_description_text` field, use that as the job posting content and **skip the WebFetch in step 2** — the text was already fetched and cached by `job-scorer`
+- If the prompt also contains a `job_description_text` field, use that as the job posting content and **skip the WebFetch in step 2** — the text was already fetched and cached during scoring (by `scoring_module`)
 - Complete all other steps normally
 
 If no `output_dir` is provided (interactive use), follow the standard instructions below.

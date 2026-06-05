@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from harness_db.models import make_engine
 
 from scoring_module.scorer import (
     _age_modifier,
@@ -16,7 +17,9 @@ from scoring_module.scorer import (
     _render_disqualifiers,
     _sanitize,
     _score_one,
+    _upsert_company,
     score_batch,
+    score_url,
 )
 
 
@@ -354,21 +357,45 @@ def _make_db(path: Path) -> None:
             status TEXT DEFAULT 'new',
             base_score INTEGER, modifier INTEGER, final_score INTEGER,
             scored_date TEXT, scoring_notes TEXT,
-            dimension_scores TEXT, job_description_text TEXT
+            dimension_scores TEXT, job_description_text TEXT,
+            description_summary TEXT, location_note TEXT,
+            first_seen TEXT, selected_date TEXT, employment_type TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE companies (
+            name TEXT PRIMARY KEY,
+            remote_confirmed INTEGER DEFAULT 0,
+            canada_confirmed INTEGER DEFAULT 0,
+            notes TEXT, researched_date TEXT, last_seen_date TEXT,
+            careers_url TEXT, fetch_notes TEXT
         )
     """)
     conn.commit()
     conn.close()
 
 
-def _insert_posting(db_path: Path, url: str, company: str, title: str) -> None:
+def _insert_posting(db_path: Path, url: str, company: str, title: str, **cols) -> None:
     conn = sqlite3.connect(str(db_path))
+    keys = ["url", "company", "title", "status", *cols.keys()]
+    values = [url, company, title, "new", *cols.values()]
+    placeholders = ", ".join("?" for _ in keys)
     conn.execute(
-        "INSERT INTO postings (url, company, title, status) VALUES (?, ?, ?, 'new')",
-        (url, company, title),
+        f"INSERT INTO postings ({', '.join(keys)}) VALUES ({placeholders})",
+        values,
     )
     conn.commit()
     conn.close()
+
+
+def _company_row(db_path: Path, name: str):
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT remote_confirmed, canada_confirmed, last_seen_date FROM companies WHERE name = ?",
+        (name,),
+    ).fetchone()
+    conn.close()
+    return row
 
 
 def test_score_batch_scores_and_updates_db(tmp_path):
@@ -638,3 +665,149 @@ def test_score_batch_reuses_duplicate_score(tmp_path):
     assert repost.base_score == 80  # reused canonical's 80, not the mock's 10
     assert repost.final_score == 80
     assert repost.scoring_notes.startswith("[reused from near-duplicate")
+
+
+# ---------------------------------------------------------------------------
+# _upsert_company — company-flag ratchet
+# ---------------------------------------------------------------------------
+
+
+def _result(company="Acme Corp", remote_canada_confirmed=10):
+    return {
+        "company": company,
+        "dimension_scores": {"remote_canada_confirmed": remote_canada_confirmed},
+    }
+
+
+def test_upsert_company_sets_flags_when_confirmed(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+    engine = make_engine(db_path)
+    _upsert_company(engine, _result(remote_canada_confirmed=8))  # boundary: ≥8 confirms
+    assert _company_row(db_path, "Acme Corp") == (1, 1, date.today().isoformat())
+
+
+def test_upsert_company_unconfirmed_leaves_flags_zero(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+    engine = make_engine(db_path)
+    _upsert_company(engine, _result(remote_canada_confirmed=7))  # below 8
+    assert _company_row(db_path, "Acme Corp") == (0, 0, date.today().isoformat())
+
+
+def test_upsert_company_never_downgrades_existing_flag(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO companies (name, remote_confirmed, canada_confirmed, last_seen_date) "
+        "VALUES ('Acme Corp', 1, 1, '2020-01-01')"
+    )
+    conn.commit()
+    conn.close()
+
+    engine = make_engine(db_path)
+    _upsert_company(engine, _result(remote_canada_confirmed=2))  # a vaguer later posting
+    # MAX() keeps the prior 1s; last_seen advances to today.
+    assert _company_row(db_path, "Acme Corp") == (1, 1, date.today().isoformat())
+
+
+def test_upsert_company_skips_blank_company(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+    engine = make_engine(db_path)
+    _upsert_company(engine, _result(company="   "))
+    assert _company_row(db_path, "") is None
+
+
+def test_upsert_company_is_best_effort_without_table(tmp_path, capsys):
+    # A legacy DB with no companies table must not raise — just warn.
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE postings (url TEXT PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+    engine = make_engine(db_path)
+    _upsert_company(engine, _result())  # must not raise
+    assert "could not ratchet company" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# score_batch / score_url — company-flag side effect
+# ---------------------------------------------------------------------------
+
+
+def test_score_batch_ratchets_company_flags(tmp_path):
+    postings = [
+        {
+            "url": "https://example.com/job/1",
+            "title": "Principal Engineer",
+            "company": "Acme Corp",
+            "platform": "linkedin",
+            "post_date": None,
+            "applicant_count": None,
+            "description_summary": "A role",
+            "job_description_text": "x" * 600,
+        }
+    ]
+    batch_file = tmp_path / "batch.json"
+    batch_file.write_text(json.dumps(postings))
+
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+    _insert_posting(db_path, "https://example.com/job/1", "Acme Corp", "Principal Engineer")
+
+    client = _api_response(base_score=78)  # default dims are all 8 → remote/Canada confirmed
+
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+    ):
+        score_batch(str(batch_file))
+
+    assert _company_row(db_path, "Acme Corp") == (1, 1, date.today().isoformat())
+
+
+def test_score_url_scores_single_posting_from_db(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+    _insert_posting(
+        db_path,
+        "https://example.com/job/9",
+        "Gamma LLC",
+        "Staff Engineer",
+        job_description_text="x" * 600,
+        platform="indeed",
+    )
+
+    client = _api_response(base_score=82)
+
+    with (
+        patch("scoring_module.scorer.anthropic.Anthropic", return_value=client),
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+    ):
+        count = score_url("https://example.com/job/9")
+
+    assert count == 1
+    conn = sqlite3.connect(str(db_path))
+    status, base = conn.execute(
+        "SELECT status, base_score FROM postings WHERE url = ?",
+        ("https://example.com/job/9",),
+    ).fetchone()
+    conn.close()
+    assert status == "scored"
+    assert base == 82
+    assert _company_row(db_path, "Gamma LLC") == (1, 1, date.today().isoformat())
+
+
+def test_score_url_returns_zero_for_unknown_url(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_db(db_path)
+
+    with (
+        patch("scoring_module.scorer.DB_PATH", str(db_path)),
+        patch("scoring_module.scorer.JOB_DATA_ROOT", str(tmp_path)),
+    ):
+        assert score_url("https://example.com/job/absent") == 0

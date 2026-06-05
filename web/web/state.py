@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import reflex as rx
-from harness_db.agent_io import REJECTABLE_STATES, build_prepare_prompt, build_score_prompt
+from harness_db.agent_io import REJECTABLE_STATES, build_prepare_prompt, build_score_command
 
 from web import data
-from web.runner import stream_agent
+from web.runner import stream_agent, stream_command
 from web.theme import DEFAULT_SORT
 from web.view_models import CompanyVM, PostingVM
 
@@ -175,8 +175,8 @@ class AppState(rx.State):
             if vm is None or vm.status != _NEW:
                 self.error = "Only 'new' jobs can be scored"
                 return
-            prompt = build_score_prompt(vm)
-        await self._run_agent(prompt)
+            argv = build_score_command(vm)
+        await self._run_stream(stream_command(argv))
 
     @rx.event(background=True)
     async def prepare(self):
@@ -186,17 +186,18 @@ class AppState(rx.State):
                 self.error = "Only 'selected' jobs can be prepared"
                 return
             prompt = build_prepare_prompt(vm)
-        await self._run_agent(prompt)
+        await self._run_stream(stream_agent(prompt))
 
-    async def _run_agent(self, prompt: str):
+    async def _run_stream(self, lines):
         # In a background task, each `async with self` block flushes a delta to the
-        # browser, so the log streams live as lines arrive.
+        # browser, so the log streams live as lines arrive. `lines` is the async
+        # iterator from stream_agent (prepare) or stream_command (score).
         async with self:
             self.error = ""
             self.scorer_open = True
             self.scorer_running = True
             self.scorer_lines = [_LAUNCHING_MSG]
-        async for line in stream_agent(prompt):
+        async for line in lines:
             async with self:
                 self.scorer_lines.append(line)
         async with self:

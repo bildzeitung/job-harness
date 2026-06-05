@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -28,10 +29,15 @@ class RunRequest(BaseModel):
     prompt: str
 
 
-async def _events(prompt: str):
+class CommandRequest(BaseModel):
+    # Interpreter-agnostic argv (e.g. ["-m", "scoring_module", "--url", ...]);
+    # this service prepends its own python so the work runs in the harness venv.
+    argv: list[str]
+
+
+async def _stream_subprocess(*cmd: str):
     proc = await asyncio.create_subprocess_exec(
-        *_CLAUDE_CMD,
-        prompt,
+        *cmd,
         cwd=_REPO_DIR,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -45,9 +51,22 @@ async def _events(prompt: str):
     await proc.wait()
 
 
+def _events(prompt: str):
+    return _stream_subprocess(*_CLAUDE_CMD, prompt)
+
+
+def _command_events(argv: list[str]):
+    return _stream_subprocess(sys.executable, *argv)
+
+
 @app.post("/run")
 async def run(req: RunRequest) -> StreamingResponse:
     return StreamingResponse(_events(req.prompt), media_type="text/event-stream")
+
+
+@app.post("/run-command")
+async def run_command(req: CommandRequest) -> StreamingResponse:
+    return StreamingResponse(_command_events(req.argv), media_type="text/event-stream")
 
 
 @app.get("/health")

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from harness_db.agent_io import (
     REJECTABLE_STATES,
     build_prepare_prompt,
-    build_score_prompt,
+    build_score_command,
     format_event,
 )
 
@@ -29,14 +29,14 @@ def test_format_event_assistant_tool_use_task_and_bash():
         "type": "assistant",
         "message": {
             "content": [
-                {"type": "tool_use", "name": "Task", "input": {"subagent_type": "job-scorer"}},
+                {"type": "tool_use", "name": "Task", "input": {"subagent_type": "job-preparer"}},
                 {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}},
                 {"type": "tool_use", "name": "Read", "input": {"file_path": "/tmp/x"}},
             ]
         },
     }
     assert format_event(event) == [
-        "→ Task: job-scorer",
+        "→ Task: job-preparer",
         "→ Bash: ls -la",
         "→ Read: /tmp/x",
     ]
@@ -71,19 +71,11 @@ class _FakePosting:
     title: str | None
 
 
-def test_build_score_prompt_includes_fields():
+def test_build_score_command_targets_scoring_module():
     p = _FakePosting(url="https://x/1", company="Acme", title="Engineer")
-    prompt = build_score_prompt(p)
-    assert "https://x/1" in prompt
-    assert "Acme" in prompt
-    assert "Engineer" in prompt
-    assert "job-scorer" in prompt
-
-
-def test_build_score_prompt_handles_missing_fields():
-    p = _FakePosting(url="https://x/2", company=None, title=None)
-    prompt = build_score_prompt(p)
-    assert "unknown" in prompt
+    cmd = build_score_command(p)
+    # Interpreter-agnostic: no leading python — each runner prepends sys.executable.
+    assert cmd == ["-m", "scoring_module", "--url", "https://x/1"]
 
 
 def test_build_prepare_prompt_includes_url():

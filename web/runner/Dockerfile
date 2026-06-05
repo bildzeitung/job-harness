@@ -1,7 +1,8 @@
 # agent-runner image: the ONLY container with the claude CLI + credentials.
 # Build context is the repo root (see web/docker-compose.yml).
-# Installs the full harness so spawned subagents (job-scorer, job-preparer ->
-# resume-tailor/rendercv/cover-letter-creator) can actually run.
+# Installs the full harness so the job-preparer subagent chain
+# (job-preparer -> resume-tailor/rendercv/cover-letter-creator) and the
+# single-posting scoring command (python -m scoring_module --url) can run.
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \

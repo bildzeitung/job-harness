@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from harness_db.agent_io import REJECTABLE_STATES, build_prepare_prompt, build_score_prompt
+from harness_db.agent_io import REJECTABLE_STATES, build_prepare_prompt, build_score_command
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -201,11 +201,11 @@ class JobsPanel(Widget):
                 severity="warning",
             )
             return
-        prompt = build_score_prompt(posting)
+        argv = build_score_command(posting)
         panel = self.query_one("#output-panel", ScorerPanel)
         panel.display = True
         self.app.notify(f"Scoring {posting.display_name}…")
-        panel.run_prompt(prompt)
+        panel.run_command(argv)
 
     def action_toggle_output(self) -> None:
         panel = self.query_one("#output-panel")

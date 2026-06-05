@@ -37,7 +37,7 @@ Agents read this at runtime via `bash -c 'echo $RESUME_FILE'`. This makes the ha
 
 ### Disqualifiers
 
-The pipeline's hard disqualifiers live in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It holds both the pre-filter keyword lists (`prefilter`) and the scoring modifiers (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer: the platform searchers (and the `api_search` module) drop matching postings at search time so noise never enters the DB, and `job-preparer` re-applies it to mark any survivors `skipped` before scoring. Edit this file to tune disqualifier behavior — it is the single source of truth read by the `job-seeker-*` search agents, `api_search`, `scoring_module`, `job-scorer`, and `job-preparer`. The loader lives in `harness_db.disqualifiers`; if the file is missing it is seeded from `harness-db/harness_db/disqualifiers.default.yaml`.
+The pipeline's hard disqualifiers live in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It holds both the pre-filter keyword lists (`prefilter`) and the scoring modifiers (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer: the platform searchers (and the `api_search` module) drop matching postings at search time so noise never enters the DB, and `job-preparer` re-applies it to mark any survivors `skipped` before scoring. Edit this file to tune disqualifier behavior — it is the single source of truth read by the `job-seeker-*` search agents, `api_search`, `scoring_module`, and `job-preparer`. The loader lives in `harness_db.disqualifiers`; if the file is missing it is seeded from `harness-db/harness_db/disqualifiers.default.yaml`.
 
 Positive search inputs are NOT in this file. The target role titles, title keywords, and domains of interest live in one user-editable file, `$JOB_DATA_ROOT/target-roles.md` (seeded from `harness-db/harness_db/target-roles.default.md` if missing — `job-seeker` Step 0e does this and never overwrites a tuned copy). Everything else (name, headline, stack, location, work-type/eligibility/employment) comes from the resume. `job-seeker` Step 0 synthesizes the resume plus `target-roles.md` into the generated `candidate-summary.json` that every searcher reads. Exclusions belong in `disqualifiers.yaml`; positive targets belong in `target-roles.md`.
 
@@ -60,14 +60,14 @@ Two UIs sit on top of the shared `harness-db` data layer (`harness_db.queries`,
 
 - **TUI** (`tui/`) — Textual app. Run with `job-tui`.
 - **Web** (`web/`) — Reflex app at TUI parity (browse, sort, detail, status
-  changes, and triggering job-scorer/job-preparer with live-streamed output).
+  changes, and triggering single-posting scoring/job-preparer with live-streamed output).
   Dev: `cd web && reflex run`. Docker: `docker compose -f web/docker-compose.yml up --build`
   (the lean `web` image plus an `agent-runner` image that isolates the `claude`
   CLI + credentials for in-browser agent runs). See `web/README.md`.
 
 ## Agents
 
-Eleven agents are configured in [.claude/agents/](.claude/agents/):
+Ten agents are configured in [.claude/agents/](.claude/agents/):
 
 **CV agents:**
 - **resume-evaluator** — Runs the CV through achievement reframing, 10-second scan test, and red flag detection. Use via `/resume-work` skill.
@@ -81,9 +81,10 @@ Eleven agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
-- **job-scorer** — Scores a single job posting 1–100 against the CV. Saves reports to `job-data/jobs/reports/`.
 - **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-5; `phase: prepare` (given the user-selected URLs) runs the resume team and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) runs a cover-letter pass and updates the report. Cover letters are off by default.
 - **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF, and — only when the task opts in (cover letters are off by default) — cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.
+
+Scoring is **not** an agent — it is the `scoring_module` Python script (`python -m scoring_module`), which calls the Claude API directly. `job-preparer` runs it on a batch during `/job-search`; the TUI/web "Score" button runs it on a single posting (`--url`). It writes the posting's scores **and** ratchets the hiring company's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags.
 
 CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `model: opus`. Pipeline agents use `model: sonnet`.
 

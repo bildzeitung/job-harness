@@ -58,7 +58,7 @@ The task description contains a JSON block:
 }
 ```
 
-Extract all fields. `job_description_text` is pre-fetched by the job-scorer and embedded here by the team lead — no file I/O needed to retrieve it. `company_notes` comes from the companies table if a prior run researched this company.
+Extract all fields. `job_description_text` is pre-fetched during scoring (by `scoring_module`) and embedded here by the team lead — no file I/O needed to retrieve it. `company_notes` comes from the companies table if a prior run researched this company.
 
 Two boolean flags control which stages run (apply these defaults if the field is absent):
 - **`generate_resume`** — default `true`. When `true`, run steps 3–4 (tailor + render the resume). When `false`, skip them; the task is a cover-letter-only pass and **must** supply `resume_yaml_path` pointing at an already-prepared resume.

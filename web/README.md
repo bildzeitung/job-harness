@@ -1,8 +1,9 @@
 # job-web — Reflex web interface
 
 A reactive web UI for the job-harness, at parity with the Textual TUI: browse
-jobs and companies, sort, view details, change statuses, and trigger the
-`job-scorer` / `job-preparer` agents with live-streamed output.
+jobs and companies, sort, view details, change statuses, score a single posting
+(via the `scoring_module`), and trigger the `job-preparer` agent — all with
+live-streamed output.
 
 It reuses the shared data layer in `harness-db` (`queries`, `config`,
 `agent_io`), so it always reflects the same SQLite DB as the TUI and pipeline.

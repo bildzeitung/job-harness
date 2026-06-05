@@ -205,7 +205,7 @@ The `modifier` field is the sum of independent adjustments computed during scori
 
 One row per hiring company name. Populated during the **Seek** stage: `consolidate_module` creates the row (name + `last_seen_date`) when a posting is first inserted, the platform searchers (e.g. `job-seeker-adzuna`) enrich it with `canada_confirmed` / `last_seen_date`, and `job-seeker-research` adds `notes` plus the remote/Canada flags. `job-seeker-company` later fills `careers_url` / `fetch_notes`. Read by `job-preparer` when assembling task context for workers.
 
-> Note: the batch `scoring_module` used by the main pipeline updates **only** the `postings` row — it does not touch `companies`. The standalone `job-scorer` agent (single-posting path, not the batch scorer) is the one that upserts company flags; see below.
+> Note: `scoring_module` — used both for the main-pipeline batch (driven by `job-preparer`) and for the single-posting "Score" action in the TUI/web (`--url`) — updates the `postings` row **and** ratchets this table's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags; see below.
 
 ```sql
 CREATE TABLE companies (
@@ -229,7 +229,7 @@ CREATE TABLE companies (
 | `canada_confirmed` | INTEGER | `1` if any verified posting or research confirmed Canada-eligibility; `0` otherwise. Never downgraded. |
 | `notes` | TEXT | 1–2 sentence research summary: funding stage, domain focus, team size, hiring signals. Written by `job-seeker-research`; preserved on subsequent upserts if non-empty. |
 | `researched_date` | TEXT | ISO 8601 date `job-seeker-research` last wrote a notes entry for this company. |
-| `last_seen_date` | TEXT | ISO 8601 date any pipeline agent last encountered a posting from this company. Updated by `job-scorer` on every scoring run. |
+| `last_seen_date` | TEXT | ISO 8601 date any pipeline stage last encountered a posting from this company. Advanced by the platform searchers / `consolidate_module` during Seek and by `scoring_module` on every scoring run. |
 | `careers_url` | TEXT | At least one URL to where the company posts its jobs (careers page or ATS board). Written by `job-seeker-company`. NULL until researched. |
 | `fetch_notes` | TEXT | Notes on how to fetch jobs and job descriptions from the company's site (ATS type, API endpoint, pagination), or the reason the careers URL could not be found. Written by `job-seeker-company`. |
 
@@ -259,11 +259,11 @@ CREATE TABLE company_postings (
 | platform searchers (e.g. `job-seeker-adzuna`) | `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags only increase (0→1); `last_seen_date` advances to the newer date |
 | `job-seeker-research` | `notes`, `remote_confirmed = 1`, `canada_confirmed = 1`, `researched_date` | Overwrites flags to 1; preserves existing notes if new notes are empty |
 | `job-seeker-company` | `careers_url`, `fetch_notes` | Fills in research findings |
-| `job-scorer` agent (standalone single-posting path only) | `remote_confirmed`, `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags can only increase (0→1), never decrease (1→0) |
+| `scoring_module` (every scoring run — batch and single-posting) | `remote_confirmed`, `canada_confirmed`, `last_seen_date` | Uses `MAX()` — flags can only increase (0→1), never decrease (1→0) |
 
-### How `remote_confirmed` / `canada_confirmed` are set by the standalone `job-scorer` agent
+### How `remote_confirmed` / `canada_confirmed` are set by `scoring_module`
 
-> This applies to the standalone `job-scorer` agent only. The batch `scoring_module` used by the main `job-preparer` pipeline does **not** write to `companies`.
+> This applies to **all** scoring — the main-pipeline batch (`job-preparer`) and the single-posting "Score" action (`--url`) share the same write path.
 
 The scorer's `remote_canada_confirmed` dimension is scored 1–10. If that dimension score is **≥ 8**, the posting explicitly states remote + Canada eligibility and both flags are set to `1` on upsert. Below 8, both are set to `0` in the upsert, but `MAX()` ensures an existing `1` is never overwritten.
 
