@@ -152,7 +152,8 @@ Create it if it does not exist:
     "RESUME_FILE": "/absolute/path/to/Your_Name_CV.yaml",
     "JOB_DATA_ROOT": "/home/you/job-data",
     "ADZUNA_APP_ID": "your-adzuna-app-id",
-    "ADZUNA_API_KEY": "your-adzuna-api-key"
+    "ADZUNA_API_KEY": "your-adzuna-api-key",
+    "JOB_TOP_N": "5"
   }
 }
 ```
@@ -162,6 +163,7 @@ Create it if it does not exist:
 | `RESUME_FILE` | Absolute path to the YAML from [§5](#5-create-your-resume-yaml). Agents read it at runtime; this is what makes the harness shareable. |
 | `JOB_DATA_ROOT` | Your job-data directory. The database lands at `$JOB_DATA_ROOT/jobs/postings.db`; tailored output at `$JOB_DATA_ROOT/output/`. |
 | `ADZUNA_APP_ID` / `ADZUNA_API_KEY` | Adzuna Canada API credentials. Needed only for the Adzuna search source. |
+| `JOB_TOP_N` | Optional. How many top-ranked postings `/job-search` presents for you to choose from. Defaults to `5` if unset. |
 
 > **No `ANTHROPIC_API_KEY` required.** The scoring module authenticates by
 > falling back to the OAuth token in `~/.claude/.credentials.json` — the same
