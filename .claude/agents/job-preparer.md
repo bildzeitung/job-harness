@@ -18,7 +18,7 @@ You run as a subagent, and **your questions do not surface to the user** — any
 
 Your invocation prompt tells you which phase to run. If no phase is given, default to `score`.
 
-- **`phase: score`** — Run **Steps 1–5** (query → pre-filter → score → rank). Return the ranked top-5 to the caller and **stop**. Do not mark anything `selected`; do not prepare anything.
+- **`phase: score`** — Run **Steps 1–5** (query → pre-filter → score → rank). Return the ranked top-N (count set by the `JOB_TOP_N` env var, default 5) to the caller and **stop**. Do not mark anything `selected`; do not prepare anything.
 - **`phase: prepare`** — The caller passes `selected_urls`: the list of posting URLs the user chose. Run **Steps 6–7** and write the **Final Report** (resumes only). Return the prepared-jobs handoff to the caller and **stop**.
 - **`phase: cover-letters`** — The caller passes `prepared_jobs`: a list of `{company, url, output_dir, resume_yaml_path}` objects (the handoff you returned from `phase: prepare`). Run the **Cover-letter pass** (Step 8) and update the Final Report. Return paths to the caller and **stop**.
 
@@ -99,7 +99,7 @@ The script prints `[SCORED]` for each posting and `[BATCH DONE]` per file. It se
 
 ## Step 4: Query Ranked Results from DB (current batch only)
 
-The top-5 you return must be the best of **the current batch** — the postings scored in this run — not the best of every posting ever scored. A "batch" corresponds to a scoring date, so scope the ranking to the most recent `scored_date` in the DB. Right after Step 3 this is today; if nothing needed scoring this run (Step 3 was skipped), it is the most recent prior batch, so the user still sees a real ranking rather than an empty list.
+The top-N you return (N = `JOB_TOP_N`, default 5) must be the best of **the current batch** — the postings scored in this run — not the best of every posting ever scored. A "batch" corresponds to a scoring date, so scope the ranking to the most recent `scored_date` in the DB. Right after Step 3 this is today; if nothing needed scoring this run (Step 3 was skipped), it is the most recent prior batch, so the user still sees a real ranking rather than an empty list.
 
 First, find the batch date. Use ToolSearch with `query: "select:mcp__sqlite__read_query"` to load the read tool if it is not already loaded, then:
 
@@ -109,13 +109,14 @@ SELECT MAX(scored_date) AS batch_date FROM postings WHERE scored_date IS NOT NUL
 
 Call the result `BATCH_DATE` (e.g. `2026-06-04`). If it is `NULL` (no posting has ever been scored), there is nothing to rank — return an empty ranked list to the caller and stop.
 
-With the venv from Step 3b still active, ask the `harness-db` CLI for the ranked top-5 of that batch as JSON — **do not hand-write SQL or rank in your head.** Pass `--scored-on BATCH_DATE` so the ranking, the counts, and `scored_below_min` are all scoped to the current batch. The CLI applies the canonical ranking (score desc, then fewest applicants first) and already excludes `selected`/`prepared`/`applied`/`skipped`:
+With the venv from Step 3b still active, ask the `harness-db` CLI for the ranked top-N of that batch as JSON — **do not hand-write SQL or rank in your head.** How many to return is user-configurable via the **`JOB_TOP_N`** env var (default `5`); read it from the environment and fall back to `5` if unset. Pass `--scored-on BATCH_DATE` so the ranking, the counts, and `scored_below_min` are all scoped to the current batch. The CLI applies the canonical ranking (score desc, then fewest applicants first) and already excludes `selected`/`prepared`/`applied`/`skipped`:
 
 ```bash
-harness-db report --json --min-score 75 --top 5 --scored-on "$BATCH_DATE"
+TOP_N="${JOB_TOP_N:-5}"
+harness-db report --json --min-score 75 --top "$TOP_N" --scored-on "$BATCH_DATE"
 ```
 
-(Equivalently `python -m harness_db.cli report --json --min-score 75 --top 5 --scored-on "$BATCH_DATE"`.)
+(Equivalently `python -m harness_db.cli report --json --min-score 75 --top "$TOP_N" --scored-on "$BATCH_DATE"`.)
 
 The JSON has the shape:
 
@@ -132,15 +133,15 @@ The JSON has the shape:
 }
 ```
 
-## Step 5: Select the Top 5
+## Step 5: Select the Top N
 
-`top` is already the top-5 postings **from the current batch** with `final_score >= 75` (or all that pass, if fewer than 5), ranked best-fit first. `scored_below_min` is the count in this batch that scored below 75 — report the count, not the list. Hand these to Step 5b for the return.
+`top` is already the top-N postings (N = `JOB_TOP_N`, default 5) **from the current batch** with `final_score >= 75` (or all that pass, if fewer than N), ranked best-fit first. `scored_below_min` is the count in this batch that scored below 75 — report the count, not the list. Hand these to Step 5b for the return.
 
 (`job_description_text` is not in this payload; you re-query it for the chosen URLs in Step 6.)
 
 ## Step 5b: Return the Ranked List to the Caller (end of `phase: score`)
 
-**Do not ask the user anything.** This is the end of `phase: score`. Return the ranked top-5 **for the current batch (`BATCH_DATE`)** to your caller (the skill) as your final message, in this exact format so the caller can present it and map the user's choice back to URLs:
+**Do not ask the user anything.** This is the end of `phase: score`. Return the ranked top-N **for the current batch (`BATCH_DATE`)** to your caller (the skill) as your final message, in this exact format so the caller can present it and map the user's choice back to URLs:
 
 ```
 PHASE: score — ranked candidates (batch BATCH_DATE)

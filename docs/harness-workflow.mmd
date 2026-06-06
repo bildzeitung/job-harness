@@ -36,7 +36,7 @@ flowchart TD
 
     %% ─── STAGE 3: SELECT ─────────────────────────────────────────────────────
     subgraph SELECT ["STAGE 3 — SELECT  (job-preparer phase:score → user → phase:prepare)"]
-        SEL1["phase:score — harness-db report --json --min-score 75 --top 5<br>Rank scored postings  (score desc, then fewest applicants)<br>Return ranked top-5 to the job-search skill  ·  job-preparer stops"]
+        SEL1["phase:score — harness-db report --json --min-score 75 --top $JOB_TOP_N<br>Rank scored postings  (score desc, then fewest applicants)<br>Return ranked top-N (JOB_TOP_N, default 5) to the job-search skill  ·  job-preparer stops"]
         SEL2{{"USER picks which jobs to prepare<br>(job-search skill prompts in plain text)"}}
         SEL3["phase:prepare — for the chosen URLs:<br>UPDATE DB:  status = 'selected',  selected_date = today"]
         SEL1 --> SEL2 --> SEL3
