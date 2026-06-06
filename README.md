@@ -7,29 +7,39 @@ An AI harness that searches for jobs. Currently, it searches:
 * Adzuna
 * ZipRecruiter
 * Greenhouse
-* .. random sites on the internets ..
+* .. and others ..
 
 ## Pre-requisites
 
-* Claude
-* Docker
-* pyenv
+Software pre-requisites are found in the [Onboarding Guide]((docs/onboarding.md).
+
+**IMPORTANT**: The main input to this tool is a resume developed as a [RenderCV YAML document](https://github.com/rendercv/rendercv). Creating this resume file is beyond the scope of this project, but this machine-readable format is the key document that the AI portions will parse, customize, and use to generate resume and cover letter PDFs.
 
 ## Getting started
 
-**[`docs/onboarding.md`](docs/onboarding.md) is the setup guide** — it walks you
-from a fresh clone to your first `/job-search` run: the Python sqlite-extension
-prerequisite, `init.sh` / `3rdparty-install.sh`, creating a [RenderCV-format](https://github.com/rendercv/rendercv)
-resume YAML, configuring `.claude/settings.local.json`, connecting the MCP
-servers, and browsing results.
+**Read the setup guide: [`docs/onboarding.md`](docs/onboarding.md)**
+
+This guide includes:
+
+* cloning the repo
+* setting up MCP servers
+* installing the necessary Python environment
+* installing 3rd party tools
+* _how to customize your job search_
 
 ## Usage
 
-Once you're set up, the top-line is `/job-search` — it runs the full harness and
-lets you pick which job sources to search. To browse the collected postings
-yourself, there's a Textual **TUI** (`job-tui`) and a Reflex **web UI** (`./web`,
-at TUI parity). See [the onboarding guide](docs/onboarding.md#10-browse-what-you-collected)
-for how to run each.
+Once everything is configured and ready, invoke the `/job-search` skill in Claude.
+This skill runs the harness. During a run, there are some interactive elements:
+
+1. Choose which job sources to exclude from the run (e.g. if **Greenhouse** is not delivering results, then this is how you tell the harness not to search there)
+
+2. Choose which top matches you would like the harness to create a customized resume for
+
+3. Optionally, whether you want the harness to create customized cover letters for the job postings you chose
+
+To browse the collected postings and mark which ones you applied for or rejected, there is a text user interface, `job-tui`, or a **web UI**.
+See [the onboarding guide](docs/onboarding.md#10-browse-what-you-collected) on how to run these tools.
 
 ## Documentation
 

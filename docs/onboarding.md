@@ -1,9 +1,7 @@
 # Onboarding — from clone to your first job search
 
-This guide takes a brand-new person from a fresh `git clone` to a first
-successful `/job-search` run with their own resume. The existing docs assume a
-machine that already has a resume YAML, credentials, and MCP servers wired up —
-this one builds all of that from nothing.
+This guide will take you from a fresh `git clone` to a first
+successful `/job-search` run with your resume.
 
 By the end you will have:
 
@@ -14,7 +12,7 @@ By the end you will have:
 - the MCP servers connected, and
 - a populated `postings.db` you can browse in the TUI or web UI.
 
-> **Read alongside:** the [README](../README.md) is the terse checklist; this is
+> **Read alongside:** the [README](../README.md) is the terse overview; this is
 > the narrated version with the *why* and the first-time gotchas. The deeper
 > reference docs ([database](database.md), [job states](job-states.md),
 > [embeddings](embeddings.md), and the workflow/data-flow diagrams) are linked
@@ -24,7 +22,7 @@ By the end you will have:
 
 ## 1. Prerequisites
 
-Install these before you touch the repo:
+Install these before cloning the repo:
 
 | Tool | Why | Notes |
 |------|-----|-------|
@@ -38,14 +36,13 @@ Install these before you touch the repo:
 ## 2. Clone and pick the right Python
 
 ```bash
-git clone <this-repo> job-harness
+git clone git@github.com:bildzeitung/job-harness.git job-harness
 cd job-harness
 ```
 
 The harness's semantic dedup/similarity layer uses
 [sqlite-vec](https://github.com/asg017/sqlite-vec), a loadable SQLite extension.
-**Your Python must have been built with loadable-extension support** — many
-stock builds are not. Check:
+**Your Python must have been built with loadable-extension support** — the stock **pyenv** especially may not! Check:
 
 ```bash
 python -c 'import sqlite3; print(hasattr(sqlite3.connect(":memory:"), "enable_load_extension"))'
@@ -59,7 +56,7 @@ PYTHON_CONFIGURE_OPTS="${PYTHON_CONFIGURE_OPTS} --enable-loadable-sqlite-extensi
 ```
 
 `init.sh` (next step) re-runs this same check and stops with guidance if it
-still fails, so you cannot accidentally skip it.
+still fails.
 
 ---
 
