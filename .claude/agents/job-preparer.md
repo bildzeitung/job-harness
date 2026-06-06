@@ -333,9 +333,11 @@ This phase runs **only** when the caller re-invokes you with `phase: cover-lette
 
 ### 8a. Gather inputs
 
-Get the candidate name **as-is** (used in the cover-letter YAML `name:` field):
+Get the candidate name **as-is** (used in the cover-letter YAML `name:` field). This is a fresh invocation, so activate the venv first — `harness-db` lives in the venv, not on the global PATH:
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
 harness-db candidate          # e.g. "Jane Smith"
 ```
 
