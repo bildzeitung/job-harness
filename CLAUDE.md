@@ -48,9 +48,10 @@ Positive search inputs are NOT in this file. The target role titles, title keywo
 
 ## Rendering
 
-Editing the CV YAML automatically triggers a render via a PostToolUse hook. To render manually:
+Render the CV to PDF with the **venv's** `rendercv` (pinned in `requirements.txt`, so the harness is self-contained — activate `./venv` first so `rendercv` resolves there, not to a global install):
 
 ```bash
+. ./venv/bin/activate
 rendercv render "$RESUME_FILE"
 ```
 
