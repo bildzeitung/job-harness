@@ -203,7 +203,7 @@ The `modifier` field is the sum of independent adjustments computed during scori
 
 ## Table: `companies`
 
-One row per hiring company name. Populated during the **Seek** stage: `consolidate_module` creates the row (name + `last_seen_date`) when a posting is first inserted, the platform searchers (e.g. `job-seeker-adzuna`) enrich it with `canada_confirmed` / `last_seen_date`, and `job-seeker-research` adds `notes` plus the remote/Canada flags. `job-seeker-company` later fills `careers_url` / `fetch_notes`. Read by `job-preparer` when assembling task context for workers.
+One row per hiring company name. Populated during the **Seek** stage: `consolidate_module` creates the row (name + `last_seen_date`) when a posting is first inserted, the platform searchers (e.g. `job-seeker-adzuna`) enrich it with `canada_confirmed` / `last_seen_date`, and `job-seeker-research` adds `notes` plus the remote/Canada flags. `job-seeker-company` later fills `careers_url` / `fetch_notes`. Read by `job-preparer` when assembling the context it passes to each `resume-tailor` / `cover-letter-creator` agent.
 
 > Note: `scoring_module` — used both for the main-pipeline batch (driven by `job-preparer`) and for the single-posting "Score" action in the TUI/web (`--url`) — updates the `postings` row **and** ratchets this table's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags; see below.
 
@@ -274,7 +274,6 @@ job-seeker-research  →  companies.notes
                                ↓
 job-preparer  (SELECT notes FROM companies WHERE name IN (...))
                                ↓
-TaskCreate.description  (company_notes field)
-                               ↓
-job-pipeline-worker  →  resume-tailor prompt + cover-letter-creator prompt
+job-preparer  →  resume-tailor prompt + cover-letter-creator prompt
+                  (company_notes passed inline when spawning each agent)
 ```

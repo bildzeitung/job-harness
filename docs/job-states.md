@@ -16,7 +16,7 @@ stateDiagram-v2
     scored --> selected : user picks from ranked top-N<br>(job-preparer marks selected)
     scored --> rejected : user rejects in TUI
 
-    selected --> prepared : job-pipeline-worker:<br>resume PDF rendered<br>(cover letter only if opted in)
+    selected --> prepared : job-preparer:<br>resume PDF rendered<br>(cover letter only if opted in)
     selected --> rejected : user rejects in TUI
 
     prepared --> applied : user marks applied
@@ -34,8 +34,8 @@ stateDiagram-v2
 | `new` | `job-seeker` (INSERT) | Posting freshly discovered; awaiting scoring. | `scored`, `skipped`, or `rejected` |
 | `scored` | `scoring_module` | Scored across 5 dimensions; all score fields populated. Eligible for selection. | `selected` (user-chosen from the top-N, count set by `JOB_TOP_N`, default 5), `rejected`, or stays `scored` |
 | `skipped` | `job-preparer` pre-filter | Hard disqualifier detected before scoring — US-only, on-site, intern/entry-level, or relocation required. No further processing. | — (terminal) |
-| `selected` | `job-preparer` | The user picked this posting from the ranked top-N (`final_score ≥ 75`); `job-preparer` marked it and created a pipeline task. | `prepared` or `rejected` |
-| `prepared` | `job-pipeline-worker` | Tailored resume PDF rendered (and a cover letter PDF too, only if the user opted in — cover letters are off by default). Ready for submission. | `applied` or `rejected` |
+| `selected` | `job-preparer` | The user picked this posting from the ranked top-N (`final_score ≥ 75`); `job-preparer` marked it and queued it for preparation. | `prepared` or `rejected` |
+| `prepared` | `job-preparer` | Tailored resume PDF rendered (and a cover letter PDF too, only if the user opted in — cover letters are off by default). Ready for submission. | `applied` or `rejected` |
 | `applied` | user (TUI `a` key) | Application has been submitted. | — (terminal) |
 | `rejected` | user (TUI `x` key) | User has decided not to apply. Reachable from `new`, `scored`, `selected`, or `prepared`. | — (terminal) |
 

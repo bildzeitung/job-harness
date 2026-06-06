@@ -12,7 +12,7 @@ If you find yourself about to run `Edit`, `Write`, or any mutating command while
 
 ### Exception: the harness data root is always writable
 
-The worktree rule above applies **only to files inside this repository**. Any harness agent — `job-preparer`, `job-pipeline-worker`, `resume-tailor`, `cover-letter-creator`, and the `job-seeker-*` searchers — is **fully permitted to Read, Write, and Edit anything under `$JOB_DATA_ROOT/**`** (job data, scoring reports, and the prepared resume/cover-letter outputs in `$JOB_DATA_ROOT/output/`). `$JOB_DATA_ROOT` lives **outside** the repository, so it is never on `main` and never needs a worktree. When you are told to write a pipeline artifact to a path under `$JOB_DATA_ROOT` (e.g. an `output_dir`), write it directly — do not stop, do not create a worktree, and do not fall back to `./applications/` inside the repo.
+The worktree rule above applies **only to files inside this repository**. Any harness agent — `job-preparer`, `resume-tailor`, `cover-letter-creator`, and the `job-seeker-*` searchers — is **fully permitted to Read, Write, and Edit anything under `$JOB_DATA_ROOT/**`** (job data, scoring reports, and the prepared resume/cover-letter outputs in `$JOB_DATA_ROOT/output/`). `$JOB_DATA_ROOT` lives **outside** the repository, so it is never on `main` and never needs a worktree. When you are told to write a pipeline artifact to a path under `$JOB_DATA_ROOT` (e.g. an `output_dir`), write it directly — do not stop, do not create a worktree, and do not fall back to `./applications/` inside the repo.
 
 ## What This Is
 
@@ -70,7 +70,7 @@ Two UIs sit on top of the shared `harness-db` data layer (`harness_db.queries`,
 
 ## Agents
 
-Ten agents are configured in [.claude/agents/](.claude/agents/):
+Nine agents are configured in [.claude/agents/](.claude/agents/):
 
 **CV agents:**
 - **resume-evaluator** — Runs the CV through achievement reframing, 10-second scan test, and red flag detection. Use via `/resume-work` skill.
@@ -84,8 +84,7 @@ Ten agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
-- **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-N (count set by the `JOB_TOP_N` env var, default 5); `phase: prepare` (given the user-selected URLs) runs the resume team and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) runs a cover-letter pass and updates the report. Cover letters are off by default.
-- **job-pipeline-worker** — Team worker: claims a job task, runs resume-tailor → rendercv PDF, and — only when the task opts in (cover letters are off by default) — cover-letter-creator → rendercv PDF, reports results to the lead, loops until no tasks remain. Not invoked directly — spawned by job-preparer.
+- **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-N (count set by the `JOB_TOP_N` env var, default 5); `phase: prepare` (given the user-selected URLs) spawns one `resume-tailor` per selected job in parallel, renders the PDFs, and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) spawns one `cover-letter-creator` per job and updates the report. Cover letters are off by default.
 
 Scoring is **not** an agent — it is the `scoring_module` Python script (`python -m scoring_module`), which calls the Claude API directly. `job-preparer` runs it on a batch during `/job-search`; the TUI/web "Score" button runs it on a single posting (`--url`). It writes the posting's scores **and** ratchets the hiring company's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags.
 

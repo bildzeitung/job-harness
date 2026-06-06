@@ -1,7 +1,7 @@
 ---
 name: "job-preparer"
 description: "Orchestrates the job preparation pipeline in phases driven by its caller (the job-search skill / main agent): scores and ranks postings (phase: score), prepares resumes for caller-selected jobs (phase: prepare), and optionally generates cover letters (phase: cover-letters). Never prompts the user directly — it returns control to the caller at each decision point."
-tools: Read, Write, Bash, WebFetch, Agent, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, TeamCreate, TeamDelete, ToolSearch, mcp__sqlite__read_query, mcp__sqlite__write_query
+tools: Read, Write, Bash, WebFetch, Agent, ToolSearch, mcp__sqlite__read_query, mcp__sqlite__write_query
 model: sonnet
 color: purple
 ---
@@ -179,23 +179,21 @@ WHERE url = '{url}'
 
 Escape single quotes in the URL by doubling them if needed.
 
-## Step 7: Spawn Resume Pipeline
+## Step 7: Prepare Resumes (spawn resume-tailor directly)
 
-Call ToolSearch with `query: "select:TeamCreate,TeamDelete,TaskCreate,TaskList,SendMessage"` **now, immediately before Step 7a** — not at session start. The scoring phase (Step 3) runs a long external subprocess, which causes context compression that drops deferred tool schemas loaded earlier in the session. Loading them here ensures they are fresh. The `Agent` tool is natively available — do **not** include it in ToolSearch queries.
+You prepare resumes by spawning `resume-tailor` agents **directly** — one per selected job, in parallel — then rendering each PDF and updating the DB yourself. There is no worker/team layer: the `Agent` tool is native and unaffected by the context compression the scoring subprocess causes, so direct spawning is both simpler and more robust than a team pipeline (which depended on deferred Team tools that compression can drop).
 
-After ToolSearch returns, attempt `TeamCreate`. If `TeamCreate` raises an error or is not in the returned schemas, skip to **Step 7f (fallback path)** instead.
+### 7a. Gather inputs
 
-### 7a. Create the team
+Get the filename-safe candidate name (used in output filenames) — do **not** parse `candidate-summary.json` inline or hardcode a name:
 
-Call `TeamCreate`:
-- `team_name`: `job-prep-{YYYY-MM-DD}` (today's date)
-- `description`: "Job application preparation pipeline"
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
+harness-db candidate --filename-safe   # e.g. "Jane_Smith"
+```
 
-Note your own name in the team — workers will send messages to you using this name. Read `~/.claude/teams/job-prep-{YYYY-MM-DD}/config.json` after creation to confirm it.
-
-### 7b. Create one task per job
-
-Before creating tasks, look up any stored company intelligence for the selected companies:
+Look up any stored company intelligence for the selected companies:
 
 ```sql
 SELECT name, remote_confirmed, canada_confirmed, notes
@@ -203,88 +201,63 @@ FROM companies
 WHERE name IN ('{company1}', '{company2}', ...)
 ```
 
-For each selected job, call `TaskCreate` with a description containing this JSON block (fill in actual values). Include `job_description_text` from the Step 6 re-query so workers can pass it directly to resume-tailor without any additional fetching. Include `company_notes` from the companies table query above if a row exists for this company and its `notes` field is non-empty.
+For each selected job, compute (sanitize company names by replacing spaces with underscores and stripping special characters):
+- `{SanitizedCompany}` — the sanitized company name.
+- `output_dir` — `$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{SanitizedCompany}` (absolute; substitute the real `$JOB_DATA_ROOT`).
+- `resume_yaml` — `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.yaml`
+- `resume_pdf` — `{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.pdf`
 
-These are **resume-only** tasks — set `generate_cover_letter` to `false`. Cover letters are not generated in this phase; the caller offers them to the user afterward and, on opt-in, re-invokes you with `phase: cover-letters`.
+### 7b. Spawn resume-tailor for every job in parallel
 
-```json
-{
-  "url": "https://...",
-  "company": "Acme Corp",
-  "title": "Principal Engineer",
-  "output_dir": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}",
-  "score": 87,
-  "job_description_text": "Full cleaned text of the job posting (up to 8000 chars)...",
-  "company_notes": "Series B healthtech startup focused on FHIR interoperability, remote-first globally",
-  "generate_resume": true,
-  "generate_cover_letter": false
-}
+In a **single message**, spawn one `resume-tailor` agent per selected job (up to 5), all in parallel. Use the `Agent` tool with `subagent_type: resume-tailor`. Each agent's prompt must include:
+
+```
+Tailor the resume for this job posting.
+url: {url}
+output_dir: {output_dir}
+Write the tailored resume YAML with the Write tool to:
+  {output_dir}/{CandidateName}_{SanitizedCompany}_Resume.yaml
+Set settings.render_command.pdf_path and typst_path to the matching absolute
+{output_dir}/{CandidateName}_{SanitizedCompany}_Resume.{pdf,typ} paths.
+Skip the cover letter — this pipeline renders cover letters separately.
+job_description_text: {job_description_text}   # omit this line if unavailable
+company_notes: {company_notes}                 # omit this line if no notes
 ```
 
-Sanitize company names for paths: replace spaces with underscores, strip special characters.
+`job_description_text` is pre-fetched during scoring (by `scoring_module`) and stored in the DB — pass it inline so resume-tailor skips the WebFetch. Omit that line if the field is empty (resume-tailor will fetch the URL itself). Omit `company_notes` if no companies row exists for this company or its notes are empty.
 
-Omit `job_description_text` if unavailable (scorer fetch failed — worker handles the fallback). Omit `company_notes` if no companies table row exists for this company or the notes field is empty.
+Wait for all spawned agents to return. Note the exact YAML path each reports.
 
-### 7c. Spawn workers
+### 7c. Render each resume PDF and update the DB
 
-In a single message, spawn one `job-pipeline-worker` per selected job (up to 5), all in parallel. Use the Agent tool with:
-- `subagent_type`: `job-pipeline-worker`
-- `team_name`: the team name from 7a
-- `name`: `worker-1`, `worker-2`, … `worker-N`
+For each job whose resume-tailor succeeded, render a PDF-only output:
 
-Each worker's prompt:
-```
-You are joining team `{team_name}`.
-worker_name: worker-{N}
-lead_name: {your_name_in_team}
-Begin your work loop immediately.
+```bash
+rendercv render "{resume_yaml}" \
+  --dont-generate-html \
+  --dont-generate-markdown \
+  --dont-generate-png
 ```
 
-Workers claim tasks from the shared pool, run resume-tailor (resume only — no cover letter in this pass) for each, and report back to you. Because tasks are claimed atomically, any worker that finishes early will automatically pick up tasks abandoned by a failed worker.
+resume-tailor sets an **absolute** slugged `pdf_path` in the YAML, so the PDF lands at `{resume_pdf}` with no rename needed. Confirm it exists:
 
-### 7d. Monitor progress
-
-As workers complete or fail jobs, they send you messages in the form:
-```
-completed {company} | {title}
-resume_yaml: {path}
-resume_pdf: {path}
-```
-(In this resume-only pass there are no cover-letter paths.) Or:
-```
-failed {company} | {title}
-reason: {error}
+```bash
+test -f "{resume_pdf}" || echo "MISSING: {resume_pdf}"
 ```
 
-Track completions and failures. Periodically call `TaskList` to see overall progress. When all tasks reach `completed` or `failed` status, proceed to 7e.
+If the PDF is present, mark the posting `prepared` (the `mcp__sqlite__write_query` tool is already loaded from Step 6):
 
-If any tasks are stuck in `in_progress` with no recent message (worker may have crashed), reset them to `not_started` via `TaskUpdate` and send an idle worker a message asking it to check the task list again.
+```sql
+UPDATE postings SET status = 'prepared' WHERE url = '{url}'
+```
 
-### 7e. Shut down the team
+Record `{resume_yaml}` and `{resume_pdf}` for the Final Report.
 
-Send `{type: "shutdown_request"}` to each worker via `SendMessage`.
+### 7d. Handle failures
 
-Call `TeamDelete` to clean up the team and task list.
-
-Save output paths reported by workers for the Final Report.
+If a resume-tailor agent failed, or rendering produced no PDF (`MISSING:` printed), leave the posting's status unchanged (it stays `selected`) and note the job as failed in the Final Report with a brief reason. You may re-spawn resume-tailor once for a failed job before giving up.
 
 Output base directory: `$JOB_DATA_ROOT/output/{YYYY-MM-DD}/`
-
-### 7f. Fallback path (TeamCreate/SendMessage unavailable)
-
-Use this path only if `TeamCreate` or `SendMessage` failed in Step 7a. This happens when context compression during the scoring phase drops the deferred tool registry and ToolSearch cannot restore it (a known limitation of long-running sessions).
-
-**Do not abandon the pipeline.** Instead:
-
-1. Call ToolSearch with `query: "select:TaskCreate,TaskList,TaskUpdate"` to load task tools.
-
-2. For each selected job, call `TaskCreate` with the same JSON payload described in Step 7b.
-
-3. Spawn one `resume-tailor` agent per selected job in parallel using the `Agent` tool (`run_in_background: true`). Each agent's prompt must include the full job description, output directory, and instruction to update its task to `completed` or `failed` when done. Agents cannot SendMessage back to you, so task status is the only signal.
-
-4. Poll `TaskList` every 60 seconds until all tasks reach `completed` or `failed`. If a task is stuck `in_progress` for more than 10 minutes with no change, mark it `failed` via `TaskUpdate` and note it in the Final Report.
-
-5. After all tasks settle, collect output paths from task descriptions and proceed to the Final Report. Skip `TeamDelete` (no team was created).
 
 ## Final Report (end of `phase: prepare`)
 
@@ -356,30 +329,65 @@ Do **not** generate cover letters in this phase and do **not** ask the user abou
 
 ## Step 8: Cover-letter pass (`phase: cover-letters`)
 
-This phase runs **only** when the caller re-invokes you with `phase: cover-letters` because the user opted in. You do not ask anything — the decision was already made. The caller passes `prepared_jobs` (the list you returned at the end of `phase: prepare`); prepare cover letters for exactly those jobs.
+This phase runs **only** when the caller re-invokes you with `phase: cover-letters` because the user opted in. You do not ask anything — the decision was already made. The caller passes `prepared_jobs` (the list you returned at the end of `phase: prepare`): `{company, url, output_dir, resume_yaml_path}` per job. Prepare cover letters for exactly those jobs, using the same direct-spawn approach as Step 7 (no worker/team layer).
 
-Repeat the team workflow from Step 7, but for cover letters only:
+### 8a. Gather inputs
 
-1. Create a team named `job-prep-{YYYY-MM-DD}-cl` (or reuse the fallback path from 7f if `TeamCreate`/`SendMessage` are unavailable).
-2. For each job in `prepared_jobs`, call `TaskCreate` with the same JSON block as Step 7b, except set the stage flags for a cover-letter-only task and include the resume path from the handoff:
-   ```json
-   {
-     "url": "https://...",
-     "company": "Acme Corp",
-     "title": "Principal Engineer",
-     "output_dir": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}",
-     "score": 87,
-     "job_description_text": "...",
-     "company_notes": "...",
-     "generate_resume": false,
-     "generate_cover_letter": true,
-     "resume_yaml_path": "$JOB_DATA_ROOT/output/{YYYY-MM-DD}/{sanitized_company}/{candidate_name}_{sanitized_company}_Resume.yaml"
-   }
-   ```
-3. Spawn one `job-pipeline-worker` per task (same prompt as 7c), monitor their `completed`/`failed` messages (now carrying `cover_letter_md` / `cover_letter_pdf` paths), then shut down and `TeamDelete` the team.
-4. **Update `final-report.md`**: replace each `— (not generated)` in the Cover Letter column with the cover-letter PDF path, and update the Status column to `✓ Resume + Cover Letter`. Reprint the condensed console summary.
-5. Return a short summary to the caller (which companies got cover letters, and any failures), then **stop**.
+Get the candidate name **as-is** (used in the cover-letter YAML `name:` field):
 
+```bash
+harness-db candidate          # e.g. "Jane Smith"
+```
+
+Re-query `job_description_text` and `companies.notes` for the prepared jobs if you need them (same queries as Steps 6 and 7a). Compute `{SanitizedCompany}` for each job as in Step 7a.
+
+### 8b. Spawn cover-letter-creator for every job in parallel
+
+In a **single message**, spawn one `cover-letter-creator` agent per prepared job, all in parallel (`subagent_type: cover-letter-creator`). Each agent's prompt must include:
+
+```
+Write a cover letter for this job posting based on the tailored resume at
+{resume_yaml_path}.
+url: {url}
+output_dir: {output_dir}
+Produce TWO output files (Write tool):
+1. {output_dir}/{SanitizedCompany}_Cover_Letter.md — the cover letter in Markdown.
+2. {output_dir}/{SanitizedCompany}_Cover_Letter_CV.yaml — a rendercv YAML:
+     cv:
+       name: {candidate_name}
+       sections:
+         cover_letter:
+           - "Greeting and opening paragraph..."
+           - "Body paragraph..."
+           - "Closing paragraph and sign-off..."
+     design:
+       theme: engineeringresumes
+   Each paragraph is a separate single-line quoted string — no YAML multiline blocks.
+job_description_text: {job_description_text}   # omit this line if unavailable
+company_notes: {company_notes}                 # omit this line if no notes
+```
+
+Wait for all agents to return. Note the exact `.md` and `_CV.yaml` paths each reports.
+
+### 8c. Render each cover-letter PDF
+
+For each successful job, render the cover-letter YAML to PDF and slug the filename:
+
+```bash
+rendercv render "{cover_letter_yaml}" \
+  --dont-generate-html \
+  --dont-generate-markdown \
+  --dont-generate-png \
+  --output-folder "{output_dir}"
+cover_letter_pdf="{output_dir}/{SanitizedCompany}_Cover_Letter.pdf"
+find "{output_dir}" -name "*.pdf" -newer "{cover_letter_yaml}" -exec mv {} "$cover_letter_pdf" \;
+```
+
+### 8d. Update the report and return
+
+- **Update `final-report.md`**: replace each `— (not generated)` in the Cover Letter column with the cover-letter PDF path, and update the Status column to `✓ Resume + Cover Letter`. Reprint the condensed console summary.
+- For any job whose cover-letter-creator or render failed, leave its report row as resume-only and note the failure.
+- Return a short summary to the caller (which companies got cover letters, and any failures), then **stop**.
 
 ## Post-Task Reflection and Error Logging
 

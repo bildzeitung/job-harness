@@ -43,32 +43,15 @@ flowchart TD
     end
 
     %% ─── STAGE 4: PREPARE ────────────────────────────────────────────────────
-    subgraph PREPARE ["STAGE 4 — PREPARE  (job-preparer orchestrates  ·  job-pipeline-worker × N)"]
-        PR1["TeamCreate:  job-prep-YYYY-MM-DD<br>Query companies WHERE name IN (selected companies)<br>TaskCreate × N per job  (resume-only: generate_cover_letter = false)<br>(url · company · title · output_dir · score · job_description_text · company_notes)"]
-        PR2["Spawn job-pipeline-worker × N  (Sonnet · all in parallel · max 5)"]
+    subgraph PREPARE ["STAGE 4 — PREPARE  (job-preparer orchestrates · spawns agents directly · no worker/team layer)"]
+        PR1["job-preparer:<br>UPDATE selected URLs → status = 'selected'<br>Query companies WHERE name IN (selected companies)<br>harness-db candidate --filename-safe"]
+        PR2["Spawn resume-tailor × N  (Opus · all in parallel · max 5)<br>prompt: url · output_dir · score · job_description_text · company_notes<br>→ ATS-targeted CV YAML → output_dir/{Name}_{Company}_Resume.yaml"]
+        PR3["job-preparer: per returned resume<br>rendercv render → output_dir/{Name}_{Company}_Resume.pdf<br>DB UPDATE: status = 'prepared'"]
 
-        subgraph WLOOP ["Per Worker — work loop  (repeats until no unclaimed tasks remain)"]
-            W1["Claim task  →  TaskUpdate: status = in_progress"]
-            W2["Spawn resume-tailor  (Opus)<br>→ ATS-targeted CV YAML<br>→ output_dir/{Name}_{Company}_Resume.yaml"]
-            W3["rendercv render<br>→ output_dir/{Name}_{Company}_Resume.pdf"]
-            W4["Cover letter — ONLY if generate_cover_letter = true  (off by default)<br>Spawn cover-letter-creator  (Opus)<br>→ Cover Letter MD<br>→ output_dir/{Company}_Cover_Letter_CV.yaml  (rendercv-wrapped)"]
-            W5["rendercv render  (cover-letter pass only)<br>→ output_dir/{Company}_Cover_Letter.pdf"]
-            W6["TaskUpdate: completed<br>DB UPDATE: status = 'prepared'<br>SendMessage → lead  (output paths + status)"]
-            WC{{"More<br>unclaimed<br>tasks?"}}
-            WIDLE["Send lead:  idle — no tasks remaining"]
-
-            W1 --> W2 --> W3
-            W3 -->|"default · resume only"| W6
-            W3 -.->|"if cover letters opted in"| W4 --> W5 --> W6
-            W6 --> WC
-            WC -->|"yes"| W1
-            WC -->|"no"| WIDLE
-        end
-
-        PR1 --> PR2 --> W1
-        WIDLE --> PDONE["job-preparer: all workers idle<br>SendMessage shutdown → each worker<br>TeamDelete<br>Write final-report.md (resumes; cover letters 'not generated')<br>Return prepared_jobs handoff to job-search skill · stop"]
+        PR1 --> PR2 --> PR3
+        PR3 --> PDONE["job-preparer:<br>Write final-report.md (resumes; cover letters 'not generated')<br>Return prepared_jobs handoff to job-search skill · stop"]
         PDONE --> PCL{{"USER opts in to cover letters?<br>(job-search skill prompts · OFF by default)"}}
-        PCL -.->|"yes → phase:cover-letters"| PCL2["job-preparer re-runs the team for cover letters only<br>(generate_cover_letter = true · resume reused)<br>Update final-report.md with cover-letter PDFs"]
+        PCL -.->|"yes → phase:cover-letters"| PCL2["job-preparer spawns cover-letter-creator × N  (Opus · parallel)<br>renders cover-letter PDFs · resume reused<br>Update final-report.md with cover-letter PDFs"]
     end
 
     %% ─── Output ──────────────────────────────────────────────────────────────
@@ -87,7 +70,7 @@ flowchart TD
     DB         -.->|"read companies"| PR1
     SC4        -.->|"UPDATE  status='scored'  (postings only)"| DB
     SEL3       -.->|"UPDATE  status='selected'"| DB
-    W6         -.->|"UPDATE  status='prepared'"| DB
+    PR3        -.->|"UPDATE  status='prepared'"| DB
 
     %% ─── Stage-to-stage flow ─────────────────────────────────────────────────
     SC4   --> SEL1
