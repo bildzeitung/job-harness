@@ -2,6 +2,8 @@
 job-data/
 .claude/worktrees
 specs/extraction-backlog.jsonl
+# Personal agent memories (resume owner's profile, etc.) stay local, never shipped
+.claude/agent-memory/*/user_*.md
 
 # Python
 __pycache__/
