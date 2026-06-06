@@ -209,7 +209,7 @@ For each selected job, compute (sanitize company names by replacing spaces with 
 
 ### 7b. Spawn resume-tailor for every job in parallel
 
-In a **single message**, spawn one `resume-tailor` agent per selected job (up to 5), all in parallel. Use the `Agent` tool with `subagent_type: resume-tailor`. Each agent's prompt must include:
+In a **single message**, spawn one `resume-tailor` agent per selected job (the user picks from the `JOB_TOP_N` ranked candidates, default 5), all in parallel. Use the `Agent` tool with `subagent_type: resume-tailor`. Each agent's prompt must include:
 
 ```
 Tailor the resume for this job posting.
@@ -230,9 +230,11 @@ Wait for all spawned agents to return. Note the exact YAML path each reports.
 
 ### 7c. Render each resume PDF and update the DB
 
-For each job whose resume-tailor succeeded, render a PDF-only output:
+For each job whose resume-tailor succeeded, render a PDF-only output. Always render with the **venv's** `rendercv` (it is pinned in `requirements.txt`, so the harness is self-contained) — activate the venv first so `rendercv` resolves to `venv/bin/rendercv`, not a global install:
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
 rendercv render "{resume_yaml}" \
   --dont-generate-html \
   --dont-generate-markdown \
@@ -373,9 +375,11 @@ Wait for all agents to return. Note the exact `.md` and `_CV.yaml` paths each re
 
 ### 8c. Render each cover-letter PDF
 
-For each successful job, render the cover-letter YAML to PDF and slug the filename:
+For each successful job, render the cover-letter YAML to PDF and slug the filename. As in Step 7c, render with the **venv's** `rendercv` — activate the venv first:
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
 rendercv render "{cover_letter_yaml}" \
   --dont-generate-html \
   --dont-generate-markdown \

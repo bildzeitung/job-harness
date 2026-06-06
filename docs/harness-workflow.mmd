@@ -45,7 +45,7 @@ flowchart TD
     %% ─── STAGE 4: PREPARE ────────────────────────────────────────────────────
     subgraph PREPARE ["STAGE 4 — PREPARE  (job-preparer orchestrates · spawns agents directly · no worker/team layer)"]
         PR1["job-preparer:<br>UPDATE selected URLs → status = 'selected'<br>Query companies WHERE name IN (selected companies)<br>harness-db candidate --filename-safe"]
-        PR2["Spawn resume-tailor × N  (Opus · all in parallel · max 5)<br>prompt: url · output_dir · score · job_description_text · company_notes<br>→ ATS-targeted CV YAML → output_dir/{Name}_{Company}_Resume.yaml"]
+        PR2["Spawn resume-tailor × N  (Opus · all in parallel · one per selected job)<br>prompt: url · output_dir · score · job_description_text · company_notes<br>→ ATS-targeted CV YAML → output_dir/{Name}_{Company}_Resume.yaml"]
         PR3["job-preparer: per returned resume<br>rendercv render → output_dir/{Name}_{Company}_Resume.pdf<br>DB UPDATE: status = 'prepared'"]
 
         PR1 --> PR2 --> PR3
