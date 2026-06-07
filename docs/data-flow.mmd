@@ -10,6 +10,8 @@ flowchart TD
 
     subgraph SEEK ["Stage 1 — Seek    (job-seeker)"]
         S["Search all sources in parallel<br>Deduplicate (URL + semantic repost) · insert new postings"]
+        SR["search-report-YYYY-MM-DD.md<br>Per-source counts · fetch problems · execution issues"]
+        S --> SR
     end
 
     DB[("postings.db")]

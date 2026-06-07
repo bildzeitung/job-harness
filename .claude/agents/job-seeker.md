@@ -193,6 +193,15 @@ Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes fi
 
 Wait for all spawned agents to complete before proceeding.
 
+### Capture each searcher's outcome for the report
+
+As each sub-agent (or inline-fallback source) finishes, record three things from its returned final message — you will need them for the detailed report in Step 4:
+1. **Count** — the number of postings it reported finding (its `[API-SEARCH:…] Found N` / `Found N postings` line, or the `total_found` in the file it wrote).
+2. **Content-fetch problems** — anything in its `<problem_log>` block, plus any explicit mention of failed/blocked HTTP fetches, rate limits, empty API responses, auth failures, timeouts, or pages it could not retrieve.
+3. **Execution issues** — sub-agent crashes, the *"Agent tool unavailable in sub-agent session"* fallback being triggered, partial completion, or a source that returned nothing because it was disabled/unavailable.
+
+Keep this as a per-source running tally. A source that wrote no file or returned `0` is recorded as `0` with the reason (disabled, probe failed, fetch error, or genuinely no matches) — never drop a source silently.
+
 ## Step 3: Consolidate
 
 Once every spawned sub-agent has completed, run the `consolidate_module` script. It reads each platform's `{platform}-{YYYY-MM-DD}.json` from `$JOB_DATA_ROOT/jobs/` (missing files are treated as zero results), queries existing URLs from the DB, deduplicates against the DB **and** within the batch, writes the audit log `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.json`, and inserts new rows into `companies` → `postings` → `company_postings` in a single transaction.
@@ -209,12 +218,59 @@ The script handles all SQL — there are no further `INSERT` calls for this step
 
 The script's stdout includes per-platform counts, removed-as-existing, removed-as-within-batch, total inserted, and the audit-log path. Forward that output into your Step 4 report.
 
-## Step 4: Report
+## Step 4: Detailed Report
 
-Print a summary:
-- MCP probe results (LinkedIn, Indeed, ZipRecruiter: connected or skipped with reason)
-- The consolidation summary printed by `consolidate_module` (per-platform raw counts, removed-as-existing, removed-as-within-batch, total inserted, audit-log path)
-- Recommended next step: invoke the `job-preparer` agent (no file argument needed — it queries the DB directly)
+Produce a **detailed search report** so the caller (the `job-search` skill) can present it to the user. Write it to a file **and** print it.
+
+Combine three inputs: (a) the Step 1 MCP probe table, (b) the per-source outcomes you captured in Step 2, and (c) the consolidation summary printed by `consolidate_module` in Step 3.
+
+Write the report to `$JOB_DATA_ROOT/jobs/search-report-{YYYY-MM-DD}.md` (use today's date), using this structure exactly:
+
+```markdown
+# Job Search Report — {YYYY-MM-DD}
+
+## 1. Sources & Positions Found
+
+| Source | Status | Found (raw) | Notes |
+|--------|--------|-------------|-------|
+| linkedin    | available / unavailable / disabled / fallback | N | one-line note |
+| indeed      | … | N | … |
+| adzuna      | … | N | … |
+| ziprecruiter| … | N | … |
+| greenhouse  | … | N | Greenhouse + Lever + Ashby + Workable + Recruitee |
+| remotive    | … | N | Remotive + Himalayas + We Work Remotely |
+| research    | … | N | … |
+
+Show each sub-source on its own row where one agent covers several
+(greenhouse → greenhouse, lever, ashby, workable, recruitee; remotive →
+remotive, himalayas, wwr) using the per-platform raw counts from
+`consolidate_module`. Add a **Total raw** line.
+
+**After deduplication:** removed as already-in-DB = X, removed within-batch = Y,
+removed as semantic duplicate = Z, **new postings inserted = N**.
+
+## 2. Content-Fetch Problems
+
+List every problem any source reported while fetching content — blocked/failed
+HTTP fetches, rate limits, empty or error API responses, auth/session failures,
+timeouts, pages that could not be retrieved, MCP probes that failed. One bullet
+per problem, naming the source. Write `None.` if there were none.
+
+## 3. Execution Issues
+
+List every other execution issue — sub-agent crashes or partial completions, the
+"Agent tool unavailable in sub-agent session" fallback being triggered (and which
+sources it affected), disabled sources, semantic-dedup backend unavailable, any
+ad-hoc workaround you had to perform. One bullet each. Write `None.` if there
+were none.
+```
+
+Fill in real values from your captured data — never leave placeholders, and never claim "None" if a problem actually occurred (transparency is mandatory; see Post-Task Reflection).
+
+After writing the file, print to your final message:
+- The full report contents (so the caller sees it without re-reading the file).
+- The path to the written report: `$JOB_DATA_ROOT/jobs/search-report-{YYYY-MM-DD}.md`.
+- Recommended next step: invoke the `job-preparer` agent (no file argument needed — it queries the DB directly).
 
 
 ## Post-Task Reflection and Error Logging
