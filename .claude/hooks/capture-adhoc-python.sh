@@ -33,6 +33,16 @@ emit() {
 case "$tool" in
   Bash)
     cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
+    # Skip exploratory network probes that merely pipe a fetched response into
+    # python for inspection (e.g. `curl ... | python3 -c "json.load(...)"`).
+    # These are throwaway debugging, not reusable harness logic, and were the
+    # dominant source of false positives in the backlog. A genuine heredoc
+    # (`python <<`) is still a candidate even alongside curl, so don't skip those.
+    if printf '%s' "$cmd" | grep -qE '\b(curl|wget)\b' \
+      && printf '%s' "$cmd" | grep -qE '\|[[:space:]]*python[0-9.]*' \
+      && ! printf '%s' "$cmd" | grep -qE 'python[0-9.]*[[:space:]]*<<|<<[[:space:]]*['"'"'"]?(PY|PYTHON)'; then
+      exit 0
+    fi
     # python -c one-liners, heredocs fed to python, or piping into python.
     if printf '%s' "$cmd" | grep -qE \
       'python[0-9.]*[[:space:]]+-c|python[0-9.]*[[:space:]]*<<|<<[[:space:]]*['"'"'"]?(PY|PYTHON)|\|[[:space:]]*python[0-9.]*([[:space:]]|$)'; then

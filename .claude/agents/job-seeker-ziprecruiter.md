@@ -46,6 +46,8 @@ Do not hard-code queries — build them from `candidate-summary.json` so the sea
 
 Run enough queries (typically 8–12) to cover that title × domain breadth without redundancy. Call `mcp__claude_ai_ZipRecruiter__search_jobs` with `location_types: ["REMOTE"]`, `seniority_classes: ["SENIOR"]`, `employment_types: ["FULL_TIME"]`, and `query: "<query>"` for each.
 
+**Always pass `location: "Canada"` and `country_admin_code: "CA"` on every call.** `location_types: ["REMOTE"]` alone is rejected with a `Need a location and country code` error — the MCP server requires an explicit location/country even for remote searches. These two params satisfy that required-field check without narrowing a remote search to on-site Canada, so include them unconditionally rather than discovering the error by trial.
+
 Apply the Search Requirements above to each posting returned before including it.
 
 Aim for **10–20 unique postings** that pass the filters.
@@ -98,6 +100,8 @@ Each posting object:
 Use `null` for `post_date` or `applicant_count` when not available.
 
 Forward the `[API-SEARCH:APPEND:ZIPRECRUITER]` line in your final report.
+
+To sanity-check the written file's shape, posting count, and per-field coverage, run `python -m api_search inspect "$JOB_DATA_ROOT/jobs/ziprecruiter-{YYYY-MM-DD}.json"` — do **not** hand-roll a `python3 -c` JSON one-liner for this.
 
 
 ## Post-Task Reflection and Error Logging

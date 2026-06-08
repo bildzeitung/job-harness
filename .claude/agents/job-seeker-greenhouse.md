@@ -89,6 +89,8 @@ Each posting record looks like:
 
 Forward all five modules' `[API-SEARCH:...] Found {N} postings — saved to {path}` lines in your final report.
 
+To sanity-check any of the five written files' shape, posting count, and per-field coverage, run `python -m api_search inspect <path>` — do **not** hand-roll a `python3 -c` JSON one-liner for this.
+
 
 ## Post-Task Reflection and Error Logging
 

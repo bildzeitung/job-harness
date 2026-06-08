@@ -51,3 +51,50 @@ def test_append_without_platform_prints_usage(env, capsys):
     rc = main(["append"])
     assert rc == 2
     assert "append <platform>" in capsys.readouterr().err
+
+
+def test_inspect_reports_shape_count_and_coverage(env, capsys):
+    f = env / "jobs" / "greenhouse-2026-06-02.json"
+    f.write_text(
+        json.dumps(
+            {
+                "search_date": "2026-06-02",
+                "platform": "greenhouse",
+                "total_found": 2,
+                "postings": [
+                    {"url": "u1", "title": "A", "job_description_text": "full"},
+                    {"url": "u2", "title": "B", "job_description_text": ""},
+                ],
+            }
+        )
+    )
+    rc = main(["inspect", str(f)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "shape: object" in out
+    assert "platform=greenhouse" in out
+    assert "postings: 2" in out
+    assert "url" in out and "2/2" in out  # url present in both
+    assert "job_description_text" in out and "1/2" in out  # one is blank
+
+
+def test_inspect_accepts_bare_array(env, capsys):
+    f = env / "jobs" / "indeed-2026-06-02.batch.json"
+    f.write_text(json.dumps([{"url": "u1", "title": "A"}]))
+    rc = main(["inspect", str(f)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "shape: array" in out
+    assert "postings: 1" in out
+
+
+def test_inspect_missing_file_reports_cleanly(env, capsys):
+    rc = main(["inspect", str(env / "nope.json")])
+    assert rc == 1
+    assert "cannot read" in capsys.readouterr().err
+
+
+def test_inspect_without_file_prints_usage(env, capsys):
+    rc = main(["inspect"])
+    assert rc == 2
+    assert "inspect FILE" in capsys.readouterr().err

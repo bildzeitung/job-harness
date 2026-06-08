@@ -91,6 +91,42 @@ def run(source_name: str, timeout: int = 20) -> list[dict[str, Any]]:
     return results
 
 
+def inspect_batch(path: str | Path) -> dict[str, Any]:
+    """Summarize a jobs ``{platform}-{date}.json`` file: shape, count, field coverage.
+
+    Replaces the ad-hoc ``rtk read file | python3 -c "json.load; print keys"``
+    one-liners agents hand-rolled to sanity-check an output file. Accepts either
+    the consolidator object (``{search_date, platform, total_found, postings}``)
+    or a bare array of postings.
+
+    Returns ``{"shape", "meta", "count", "fields"}`` where ``fields`` maps each
+    posting key to the number of postings that carry a non-empty value for it —
+    surfacing partially-populated fields (e.g. a missing ``job_description_text``).
+    """
+    data = json.loads(Path(path).read_text())
+    if isinstance(data, dict):
+        shape = "object"
+        meta = {k: data[k] for k in ("search_date", "platform", "total_found") if k in data}
+        postings = data.get("postings", [])
+    else:
+        shape = "array"
+        meta = {}
+        postings = data
+    if not isinstance(postings, list):
+        postings = []
+
+    fields: dict[str, int] = {}
+    for p in postings:
+        if not isinstance(p, dict):
+            continue
+        for key, value in p.items():
+            fields.setdefault(key, 0)
+            if value not in (None, "", [], {}):
+                fields[key] += 1
+
+    return {"shape": shape, "meta": meta, "count": len(postings), "fields": fields}
+
+
 def _batch_path(platform: str, batch_date: str) -> Path:
     """Resolve `$JOB_DATA_ROOT/jobs/{platform}-{date}.json`, creating `jobs/`."""
     job_data_root = os.environ.get("JOB_DATA_ROOT")
