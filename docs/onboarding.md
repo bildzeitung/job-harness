@@ -139,13 +139,16 @@ personal resume folder); you will point the harness at its absolute path next.
 
 ## 6. Configure the harness
 
-All per-user configuration is environment variables in
-`.claude/settings.local.json`. **This file is gitignored — never commit it.**
-Create it if it does not exist:
+Configuration is **data-driven and per-user** — the values live in the harness DB
+and you edit them from the TUI/web **Settings** tab (or the `harness-db config`
+CLI). The only values still read from `.claude/settings.local.json` env are the
+**bootstrap** pointers needed to find the DB before any user is known. **This
+file is gitignored — never commit it.** Create it if it does not exist:
 
 ```json
 {
   "env": {
+    "HARNESS_DB": "/home/you/job-data/jobs/postings.db",
     "RESUME_FILE": "/absolute/path/to/Your_Name_CV.yaml",
     "JOB_DATA_ROOT": "/home/you/job-data",
     "ADZUNA_APP_ID": "your-adzuna-app-id",
@@ -157,10 +160,17 @@ Create it if it does not exist:
 
 | Variable | What it does |
 |----------|--------------|
-| `RESUME_FILE` | Absolute path to the YAML from [§5](#5-create-your-resume-yaml). Agents read it at runtime; this is what makes the harness shareable. |
-| `JOB_DATA_ROOT` | Your job-data directory. The database lands at `$JOB_DATA_ROOT/jobs/postings.db`; tailored output at `$JOB_DATA_ROOT/output/`. |
-| `ADZUNA_APP_ID` / `ADZUNA_API_KEY` | Adzuna Canada API credentials. Needed only for the Adzuna search source. |
+| `HARNESS_DB` | **Bootstrap.** Absolute path to the SQLite DB file. Optional — if unset it falls back to `$JOB_DATA_ROOT/jobs/postings.db`. Set it to put the DB anywhere. |
+| `RESUME_FILE` | Absolute path to the YAML from [§5](#5-create-your-resume-yaml). Now a DB config item too; the env value is a fallback and the source for the first-run import. |
+| `JOB_DATA_ROOT` | Your job-data directory (tailored output at `$JOB_DATA_ROOT/output/`). Also a DB config item; env is the fallback/seed. |
+| `ADZUNA_APP_ID` / `ADZUNA_API_KEY` | Adzuna Canada API credentials. Now DB config items; env is the fallback/seed. Needed only for the Adzuna source. |
 | `JOB_TOP_N` | Optional. How many top-ranked postings `/job-search` presents for you to choose from. Defaults to `5` if unset. |
+
+> **How resolution works.** `RESUME_FILE`, `ADZUNA_*`, and `JOB_DATA_ROOT`
+> resolve as: the active user's stored value → the env / `settings.local.json`
+> fallback. On first run the harness seeds a `default` user and **imports** your
+> existing env values + config files into it, so an existing single-user setup
+> keeps working with zero changes. After that, edit them in **Settings**.
 
 > **No `ANTHROPIC_API_KEY` required.** The scoring module authenticates by
 > falling back to the OAuth token in `~/.claude/.credentials.json` — the same
@@ -200,39 +210,48 @@ before LinkedIn is wired up.
 
 ## 8. (Optional) Tune your search config
 
-Two user-editable files in `$JOB_DATA_ROOT` steer the search. You do **not** have
-to create either — the first run seeds each from a shipped template if it is
-missing, and never overwrites a copy you have tuned. They are complementary:
-`target-roles.md` says what to **look for**, `disqualifiers.yaml` says what to
-**drop**.
+Search tuning is **data-driven and per-user** — sources, target roles, and
+disqualifiers all live in the harness DB and you edit them from the TUI/web
+**Settings** tab (or the `harness-db` CLI). On first run the built-in defaults are
+seeded and any existing `target-roles.md` / `disqualifiers.yaml` /
+`sources-config.json` files are imported once into your `default` user, so prior
+tuning carries over. They are complementary: **target roles** say what to
+**look for**, **disqualifiers** say what to **drop**, **sources** say where to
+**search**.
 
 ### Target roles — what to look for
 
-`$JOB_DATA_ROOT/target-roles.md` is the canonical list of **positive targets**:
-the role titles, the title keywords that drive search queries and seniority
-filtering, and your domains of interest. Every `job-seeker` searcher reads it,
-and it feeds the generated `candidate-summary.json` (the rest of which — name,
-headline, stack, location — comes from your resume YAML). Seeded from
-[`harness-db/harness_db/target-roles.default.md`](../harness-db/harness_db/target-roles.default.md)
-(a senior-engineering starter) — edit the **Title Keywords** and **Domains**
-sections to match the roles you actually want.
+The role titles, the title keywords that drive search queries and seniority
+filtering, and your domains of interest. Every `job-seeker` searcher reads
+`$JOB_DATA_ROOT/target-roles.md`, which is now **generated from the DB** (Settings
+→ Target Roles, or `harness-db target-roles generate`) and feeds the generated
+`candidate-summary.json` (name/headline/stack/location come from your resume).
+Built-ins seed from
+[`harness-db/harness_db/target-roles.default.yaml`](../harness-db/harness_db/target-roles.default.yaml).
 
 ### Disqualifiers — what to drop
 
-`$JOB_DATA_ROOT/disqualifiers.yaml` holds the hard **exclusions**, seeded from
-[`harness-db/harness_db/disqualifiers.default.yaml`](../harness-db/harness_db/disqualifiers.default.yaml).
-It has two independent parts:
+The hard **exclusions**, edited in Settings → Disqualifiers (built-ins seed from
+[`harness-db/harness_db/disqualifiers.default.yaml`](../harness-db/harness_db/disqualifiers.default.yaml)).
+Two independent parts:
 
-- **`prefilter`** — postings whose title/summary match these phrases are dropped
+- **prefilter** — postings whose title/summary match these phrases are dropped
   before scoring (and at search time), marked `skipped`. Defaults exclude
   US-only authorization, mandatory relocation, etc.
-- **`scoring_modifiers`** — negative score adjustments the scorer applies *during*
+- **scoring modifiers** — negative score adjustments the scorer applies *during*
   scoring (e.g. requires a named certification → −40).
 
-This is the **single source of truth** for exclusions, read by the searchers,
-the scorer, and `job-preparer`. Edit it to tune behavior; see
+The DB is the **single source of truth** for exclusions, read by the searchers,
+the scorer, and `job-preparer`. Edit it in Settings to tune behavior; see
 [job-states.md](job-states.md) and [database.md](database.md) for how the two
 mechanisms differ.
+
+### Sources — where to search
+
+Which of the 7 high-level sources run is a per-user selection in the DB (Settings
+→ Sources, or `harness-db sources enable/disable`). `/job-search` no longer
+prompts for sources; it reads your selection from the DB. A one-off
+`--skip`/`--only` arg still works as a transient override for a single run.
 
 ---
 
