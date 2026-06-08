@@ -86,10 +86,22 @@ If a table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
 
 ## Step 0c: Load Sources Configuration
 
-Read `$JOB_DATA_ROOT/jobs/sources-config.json`. This file is written by the job-search skill before spawning this agent and lists which sources are active for this run.
+Source selection is **data-driven**: it lives per-user in the harness DB (managed
+from the TUI/web Settings, not a config file). Read the enabled set from the DB:
 
-If the file exists: parse its `enabled` array and store as `enabled_sources`.
-If the file does not exist or cannot be read: default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
+```bash
+harness-db sources enabled
+```
+
+This prints `{"enabled": [...]}`. Parse the `enabled` array and store it as
+`enabled_sources`. (This command also runs the one-time migration that imports any
+legacy `sources-config.json` into the DB on first use.)
+
+If the caller passed an explicit `enabled_sources` list in the spawn prompt (a
+transient `--skip`/`--only` override from the job-search skill), use that list
+instead of querying the DB.
+
+If the command fails for any reason, default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
 
 Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever, Ashby, Workable, and Recruitee); the `remotive` source runs three remote-jobs boards in one agent (Remotive, Himalayas, and We Work Remotely).
 

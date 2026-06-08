@@ -25,6 +25,9 @@ from harness_db.report import render_report, report_data
 
 app = typer.Typer(help="Job-harness DB tools.", no_args_is_help=True)
 
+sources_app = typer.Typer(help="Manage job-search source selection.", no_args_is_help=True)
+app.add_typer(sources_app, name="sources")
+
 
 def _resolve_db(db: Optional[Path]) -> Path:
     try:
@@ -95,6 +98,58 @@ def candidate(
     if filename_safe:
         value = value.replace(" ", "_")
     typer.echo(value)
+
+
+@sources_app.command("list")
+def sources_list(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """List sources with the user's enabled flag."""
+    from harness_db.sources_store import list_sources
+
+    for s in list_sources(uid):
+        mark = "x" if s.enabled else " "
+        typer.echo(f"[{mark}] {s.source_id:<13} {s.description}")
+
+
+@sources_app.command("enabled")
+def sources_enabled(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Print the enabled sources as JSON: ``{"enabled": [...]}``.
+
+    This is the job-seeker's read path. It runs the full schema seed + one-time
+    file import, so the first pipeline run migrates an existing install.
+    """
+    from harness_db.seed import ensure_schema_and_seed
+    from harness_db.sources_store import enabled_source_ids
+
+    ensure_schema_and_seed()
+    typer.echo(json.dumps({"enabled": enabled_source_ids(uid)}))
+
+
+@sources_app.command("enable")
+def sources_enable(
+    source_id: str = typer.Argument(..., help="Source id, e.g. linkedin."),
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Enable a source for the user."""
+    from harness_db.sources_store import set_enabled
+
+    set_enabled(source_id, True, uid)
+    typer.echo(f"enabled {source_id}")
+
+
+@sources_app.command("disable")
+def sources_disable(
+    source_id: str = typer.Argument(..., help="Source id, e.g. linkedin."),
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Disable a source for the user."""
+    from harness_db.sources_store import set_enabled
+
+    set_enabled(source_id, False, uid)
+    typer.echo(f"disabled {source_id}")
 
 
 if __name__ == "__main__":
