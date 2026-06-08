@@ -14,6 +14,7 @@ from __future__ import annotations
 import html
 import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -49,6 +50,14 @@ _CANADA_OK_TOKENS = ("canada", "worldwide", "anywhere", "americas", "north ameri
 # Greenhouse/Lever boards). httpx.Client is thread-safe, so each work item
 # (one query or one slug) runs on its own thread up to this many at a time.
 MAX_FETCH_WORKERS = 8
+
+# Adzuna is a single rate-limited search API (unlike the per-board ATS endpoints,
+# which tolerate the full fan-out). Firing all target-title queries at once trips
+# its free-tier limit — the 2026-06-07 run lost 4 of 8 queries to HTTP 429 — so
+# Adzuna gets its own low concurrency plus a 429-aware retry (see _adzuna_get).
+ADZUNA_MAX_WORKERS = 2
+ADZUNA_MAX_RETRIES = 3
+ADZUNA_BACKOFF_BASE = 2.0
 
 _T = TypeVar("_T")
 
@@ -142,21 +151,53 @@ def _canada_eligible(restriction: str) -> bool:
 def _fetch_in_parallel(
     work_items: list[_T],
     worker: Callable[[_T], list[dict[str, Any]]],
+    max_workers: int = MAX_FETCH_WORKERS,
 ) -> Iterator[dict[str, Any]]:
     """Run `worker` over `work_items` concurrently, yielding each item's records.
 
     Each `worker` handles its own errors and returns a (possibly empty) list, so
     one slow or failing query/board never blocks or aborts the others. Results
     are yielded in `work_items` order, keeping output stable and deterministic.
+
+    `max_workers` caps concurrency; sources hitting a single rate-limited API
+    (e.g. Adzuna) pass a smaller value than the default board fan-out.
     """
     if not work_items:
         return
-    with ThreadPoolExecutor(max_workers=min(MAX_FETCH_WORKERS, len(work_items))) as pool:
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(work_items))) as pool:
         for records in pool.map(worker, work_items):
             yield from records
 
 
 # ── fetch generators ──────────────────────────────────────────────────────────
+
+
+def _adzuna_get(client: httpx.Client, params: dict[str, Any]) -> httpx.Response:
+    """GET the Adzuna endpoint, retrying HTTP 429 with Retry-After/backoff.
+
+    Adzuna's free tier rate-limits, so a 429 is transient — wait the server's
+    `Retry-After` (or an exponential backoff) and try again rather than dropping
+    the query. Other HTTP errors raise immediately via `raise_for_status`.
+    """
+    for attempt in range(ADZUNA_MAX_RETRIES + 1):
+        resp = client.get(ADZUNA_URL, params=params)
+        if resp.status_code == 429 and attempt < ADZUNA_MAX_RETRIES:
+            retry_after = resp.headers.get("Retry-After")
+            try:
+                wait = float(retry_after) if retry_after else ADZUNA_BACKOFF_BASE ** (attempt + 1)
+            except ValueError:
+                wait = ADZUNA_BACKOFF_BASE ** (attempt + 1)
+            print(
+                f"[ADZUNA] HTTP 429 (attempt {attempt + 1}/{ADZUNA_MAX_RETRIES}), "
+                f"retrying in {wait:.0f}s",
+                flush=True,
+            )
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp
+    resp.raise_for_status()
+    return resp
 
 
 def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
@@ -166,9 +207,9 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
 
     def _fetch_query(q: str) -> list[dict[str, Any]]:
         try:
-            resp = client.get(
-                ADZUNA_URL,
-                params={
+            resp = _adzuna_get(
+                client,
+                {
                     "app_id": app_id,
                     "app_key": app_key,
                     "results_per_page": cfg.get("results_per_page", 50),
@@ -176,7 +217,6 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
                     "full_time": cfg.get("full_time", 1),
                 },
             )
-            resp.raise_for_status()
             data = resp.json()
         except Exception as e:
             print(f'[ADZUNA] Query "{q}" failed: {e}', flush=True)
@@ -194,7 +234,11 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
             for job in data.get("results", [])
         ]
 
-    yield from _fetch_in_parallel(queries_from_summary(summary), _fetch_query)
+    # Low concurrency so the per-query 429 retry isn't fighting a flood of our own
+    # parallel requests — the rate-limited single endpoint, unlike the ATS boards.
+    yield from _fetch_in_parallel(
+        queries_from_summary(summary), _fetch_query, max_workers=ADZUNA_MAX_WORKERS
+    )
 
 
 def fetch_greenhouse(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
