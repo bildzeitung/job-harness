@@ -70,6 +70,18 @@ Pick the candidate's most distinctive `domains`/`stack` entries and search for r
 
 Aim for **10–20 unique, verified postings** across all rounds.
 
+### Known WebFetch-hostile sources — use these workarounds, don't burn calls retrying
+
+Some sources reliably defeat WebFetch. When you hit one, fall back immediately instead of re-trying the same URL:
+
+- **Hacker News "Who is hiring"** — `hnhiring.com` returns **HTTP 403** to WebFetch. Use the HN Algolia API instead (no key, no scraping):
+  - Find the current thread: `curl -s "https://hn.algolia.com/api/v1/search?query=Ask%20HN%20Who%20is%20hiring&tags=story&restrictSearchableAttributes=title&hitsPerPage=5"` → take the newest matching `objectID`.
+  - Pull its comments (one per posting): `curl -s "https://hn.algolia.com/api/v1/items/{objectID}"` and read `children[].text`.
+- **Wellfound / AngelList** (`wellfound.com`) — returns **HTTP 403** to WebFetch. Extract title/company/URL from the WebSearch result snippets; do not expect to open the page to verify.
+- **Ashby job pages** (`jobs.ashbyhq.com/{slug}/...`) — individual job URLs are **JavaScript-rendered**; WebFetch returns only the literal string `"Jobs"`. Don't WebFetch them. Instead derive the board slug from the URL and hit the public posting-api: `curl -s "https://api.ashbyhq.com/posting-api/job-board/{slug}"` returns the board's jobs as JSON (title, location, `descriptionPlain`, `jobUrl`). (Note the dedicated `greenhouse` agent already pulls the seeded Ashby slugs — only do this for Ashby companies it does **not** cover.)
+
+For any other source that returns 403 or empty/JS-only content, capture what the WebSearch snippet gives you and move on rather than retrying WebFetch.
+
 ## Search Requirements
 
 All search inputs come from configuration — nothing here is hard-coded.

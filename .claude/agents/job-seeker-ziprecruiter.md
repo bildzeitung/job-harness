@@ -46,6 +46,8 @@ Do not hard-code queries — build them from `candidate-summary.json` so the sea
 
 Run enough queries (typically 8–12) to cover that title × domain breadth without redundancy. Call `mcp__claude_ai_ZipRecruiter__search_jobs` with `location_types: ["REMOTE"]`, `seniority_classes: ["SENIOR"]`, `employment_types: ["FULL_TIME"]`, and `query: "<query>"` for each.
 
+**Always pass `location: "Canada"` and `country_admin_code: "CA"` on every call.** `location_types: ["REMOTE"]` alone is rejected with a `Need a location and country code` error — the MCP server requires an explicit location/country even for remote searches. These two params satisfy that required-field check without narrowing a remote search to on-site Canada, so include them unconditionally rather than discovering the error by trial.
+
 Apply the Search Requirements above to each posting returned before including it.
 
 Aim for **10–20 unique postings** that pass the filters.

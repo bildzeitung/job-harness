@@ -14,15 +14,15 @@ adzuna:
   results_per_page: 50
   full_time: 1
 
+# Slugs are validated periodically — companies migrate ATS often, and a dead
+# board only emits a 404 error and zero results. When a board 404s, hunt its new
+# home (commonly Ashby) rather than just deleting it. Last verified 2026-06-07.
 greenhouse:
   slugs:
-    - shopify
     - stripe
     - datadog
-    - hashicorp
     - mongodb
     - elastic
-    - confluent
     - cloudflare
     - fastly
     - vercel
@@ -30,57 +30,29 @@ greenhouse:
     - planetscale
     - cockroachlabs
     - samsara
-    - ramp
     - brex
-    - rippling
     - figma
-    - notion
     - airtable
-    - retool
-    - benchling
-    - veeva
-    - flatiron
     - doximity
-    - privia
-    - healthgorilla
-    - 1password
-    - wealthsimple
+    - flatironhealth
     - d2l
-    - unity
+    - unity3d
     - hootsuite
-    - clio
-    - lightspeed
-    - cohere
-    - adeptai
-    - prefect
-    - dbt-labs
-    - airbyte
+    - asana
+    - carta
+    - gusto
+    - intercom
+    - hubspotjobs
+    - dremio
+    - dbtlabsinc
+    - scaleai
     - starburst
 
 lever:
   slugs:
-    - asana
-    - carta
-    - lattice
-    - gusto
-    - brainly
-    - bolt
     - plaid
-    - segment
-    - intercom
-    - hubspot
-    - clio
-    - hootsuite
-    - later
-    - vidyard
     - wealthsimple
-    - dremio
-    - starburst
-    - airbyte
-    - prefect
-    - cohere
-    - scale
-    - weights-biases
+    - veeva
 
 # Ashby slugs are the board id in jobs.ashbyhq.com/{slug}. Verified to return
 # postings; companies already covered by the greenhouse/lever lists are left out
@@ -97,6 +69,16 @@ ashby:
     - supabase
     - render
     - openai
+    - airbyte
+    - confluent
+    - ramp
+    - notion
+    - benchling
+    - 1password
+    - lightspeed
+    - cohere
+    - prefect
+    - healthgorilla
 
 # Workable slugs are the {slug}.workable.com board id. These ATSes skew toward
 # EU/SMB companies, so the seed list is short and verified — extend it with

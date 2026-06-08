@@ -44,9 +44,11 @@ Do not hard-code queries — build them from `candidate-summary.json` so the sea
 - **Base queries** — one per entry in `target_titles`.
 - **Domain-narrowed queries** — combine target titles (or the core seniority terms) with entries from `domains` to surface niche roles (e.g. `"staff engineer" <domain>`).
 
+**Disambiguate bare engineering titles.** Indeed CA does not filter by tech domain, so a broad query like `principal engineer` or `staff engineer remote` returns mostly *non-software* engineers (civil, mechanical, structural, electrical, HVAC, process). Never issue a bare-title query: always anchor it to the software domain by appending `software` (or a concrete `stack`/`domain` term from `candidate-summary.json`) — e.g. `principal software engineer`, `staff engineer remote <domain>`. This is the single biggest lever on Indeed result quality.
+
 Run enough queries (typically 8–12) to cover that title × domain breadth without redundancy. Call `mcp__claude_ai_Indeed__search_jobs` with `country_code: "CA"`, `location: "remote"`, and `search: "<query>"` for each.
 
-For each search result, call `mcp__claude_ai_Indeed__get_job_details` with the job ID to fetch the full description, then apply the Search Requirements above before including.
+For each search result, call `mcp__claude_ai_Indeed__get_job_details` with the job ID to fetch the full description, then apply the Search Requirements above before including. **Discard any posting that is not a software/tech engineering role** even if the title contains a seniority keyword — a "Principal Civil Engineer" or "Structural Engineer" passes the title filter but is off-target noise. Use the fetched description to confirm the role is software/tech before keeping it.
 
 Aim for **15–25 unique postings** that pass the filters.
 
