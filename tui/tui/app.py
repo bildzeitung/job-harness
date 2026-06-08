@@ -6,7 +6,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 
-from tui.widgets import CompanyPanel, JobsPanel
+from tui.widgets import CompanyPanel, JobsPanel, SettingsPanel
 
 
 class JobViewerApp(App):
@@ -29,6 +29,8 @@ class JobViewerApp(App):
                 yield JobsPanel(id="jobs-panel")
             with TabPane("Companies", id="companies"):
                 yield CompanyPanel(id="company-panel")
+            with TabPane("Settings", id="settings"):
+                yield SettingsPanel(id="settings-panel")
         yield Footer()
 
     def on_mount(self) -> None:
