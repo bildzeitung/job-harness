@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-from api_search.core import append_postings, run, write_output
+from api_search.core import append_postings, inspect_batch, run, write_output
 from api_search.sources import SOURCES, usage
 
 
@@ -12,8 +12,37 @@ def _usage() -> str:
         "  or: python -m api_search append <platform> [--from FILE] [--date YYYY-MM-DD]\n"
         "      merge a JSON batch (array of consolidator-schema postings, or an\n"
         "      object with a 'postings' key) from FILE or stdin into\n"
-        "      $JOB_DATA_ROOT/jobs/<platform>-<date>.json, deduped by URL."
+        "      $JOB_DATA_ROOT/jobs/<platform>-<date>.json, deduped by URL.\n"
+        "  or: python -m api_search inspect FILE\n"
+        "      print the shape, posting count, and per-field coverage of a\n"
+        "      jobs/<platform>-<date>.json file (no hand-rolled json one-liners)."
     )
+
+
+def _inspect(argv: list[str]) -> int:
+    if len(argv) < 2:
+        print(_usage(), file=sys.stderr)
+        return 2
+    path = argv[1]
+    try:
+        info = inspect_batch(path)
+    except OSError as e:
+        print(f"[API-SEARCH:INSPECT] cannot read {path}: {e}", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"[API-SEARCH:INSPECT] invalid JSON in {path}: {e}", file=sys.stderr)
+        return 1
+
+    meta = " ".join(f"{k}={v}" for k, v in info["meta"].items())
+    print(f"[API-SEARCH:INSPECT] {path}")
+    print(f"  shape: {info['shape']}" + (f"  {meta}" if meta else ""))
+    print(f"  postings: {info['count']}")
+    if info["fields"]:
+        print("  field coverage (non-empty / total):")
+        width = max(len(k) for k in info["fields"])
+        for key, present in info["fields"].items():
+            print(f"    {key.ljust(width)}  {present}/{info['count']}")
+    return 0
 
 
 def _append(argv: list[str]) -> int:
@@ -77,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "append":
         return _append(argv)
+    if argv and argv[0] == "inspect":
+        return _inspect(argv)
     if not argv or argv[0] not in SOURCES:
         print(_usage(), file=sys.stderr)
         return 2
