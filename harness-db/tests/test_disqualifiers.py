@@ -44,6 +44,38 @@ def test_prefilter_disqualifies_is_case_insensitive():
     assert disqualifiers.prefilter_disqualifies("Lead", "US WORK AUTHORIZATION required", PREFILTER)
 
 
+# Word-boundary matching: keywords match whole words, not substrings inside
+# larger words, and a geography keyword glued onto "/canada" does not fire.
+WORD_BOUNDARY_PREFILTER = {
+    "description_phrases": ["defi", "remote - us", "blockchain", "remote (US)"],
+}
+
+
+@pytest.mark.parametrize(
+    "title,text,expected",
+    [
+        # "defi" matches the standalone crypto term and "DeFi"...
+        ("Engineer", "We build a DeFi protocol", True),
+        ("Engineer", "smart contracts for defi", True),
+        # ...but no longer the "defi" inside "defines"/"defining" (the reported
+        # false positive: a PointClickCare / Best Buy posting).
+        ("Principal Engineer AI", "The architect defines and refines APIs", False),
+        ("Enterprise Architect", "defining the platform roadmap", False),
+        # "remote - us" matches a US-only posting on its own...
+        ("Staff Engineer", "This role is remote - US based", True),
+        ("Staff Engineer", "Remote - US", True),
+        # ...but not the Canada-eligible "remote - us/canada" (the reported
+        # Docker Staff Backend Engineer false positive).
+        ("Staff Backend Engineer", "Location: Remote - US/Canada", False),
+        # the "/canada" exception is narrow — other slash compounds still match,
+        # so crypto exclusions are unaffected.
+        ("Engineer", "We are a blockchain/web3 company", True),
+    ],
+)
+def test_prefilter_word_boundaries(title, text, expected):
+    assert disqualifiers.prefilter_disqualifies(title, text, WORD_BOUNDARY_PREFILTER) is expected
+
+
 def test_prefilter_disqualifies_empty_prefilter_passes_everything():
     assert disqualifiers.prefilter_disqualifies("Junior Intern", "us only", {}) is False
 
