@@ -7,10 +7,15 @@
 # Two independent mechanisms:
 #   prefilter         — job-preparer marks matching postings 'skipped' BEFORE scoring.
 #   scoring_modifiers — the scorer LLM applies these negative modifiers DURING scoring.
+#
+# Prefilter matching is case-insensitive and WORD-BOUNDED: a token like "defi"
+# matches the whole word (and "DeFi") but not "defines"/"defining". As a special
+# case, a phrase glued onto "/canada" (e.g. "remote - us/canada") does NOT fire,
+# so Canada-eligible postings survive while "remote - us" alone still disqualifies.
 
 # Pre-filter: postings matching these are marked 'skipped' before scoring.
 prefilter:
-  # Case-insensitive substring match on title + description_summary.
+  # Case-insensitive, word-bounded match on title + description_summary.
   description_phrases:
     - "US work authorization"
     - "authorized to work in the US"
@@ -20,7 +25,7 @@ prefilter:
     - "relocation required"
     - "on-site only"
     - "no remote"
-  # Case-insensitive substring match on the title.
+  # Case-insensitive, word-bounded match on the title.
   title_terms:
     - " intern "
     - "internship"

@@ -102,6 +102,35 @@ def test_fetch_adzuna_skips_failed_query(adzuna_env, capsys):
     assert "[ADZUNA]" in capsys.readouterr().out
 
 
+def test_fetch_adzuna_retries_on_429(adzuna_env, monkeypatch, capsys):
+    # The free tier rate-limits; a 429 is transient and must be retried, not dropped.
+    monkeypatch.setattr("api_search.sources.time.sleep", lambda _s: None)
+    payload = {
+        "results": [
+            {
+                "title": "Principal Engineer",
+                "company": {"display_name": "Acme Corp"},
+                "redirect_url": "https://adzuna.ca/jobs/1",
+                "created": "2026-05-25T12:00:00Z",
+                "description": "Fully remote.",
+            }
+        ]
+    }
+    calls = {"n": 0}
+
+    def route(url, params):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return FakeResp({}, status=429, headers={"Retry-After": "0"})
+        return FakeResp(payload)
+
+    client = make_client(route)
+    jobs = list(fetch_adzuna(client, SUMMARY, {}))
+    assert calls["n"] == 2  # retried after the 429
+    assert [j["url"] for j in jobs] == ["https://adzuna.ca/jobs/1"]
+    assert "429" in capsys.readouterr().out
+
+
 # ── fetch_greenhouse ──────────────────────────────────────────────────────────
 
 

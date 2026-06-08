@@ -8,13 +8,15 @@ import pytest
 
 
 class FakeResp:
-    def __init__(self, payload, status: int = 200, text: str = ""):
+    def __init__(self, payload, status: int = 200, text: str = "", headers: dict | None = None):
         self._payload = payload
         self.status = status
+        self.status_code = status  # mirror httpx.Response for status-aware callers
         self.text = text
+        self.headers = headers or {}
 
     def raise_for_status(self):
-        if self.status >= 400:
+        if self.status_code >= 400:
             raise httpx.HTTPStatusError("error", request=None, response=None)
 
     def json(self):

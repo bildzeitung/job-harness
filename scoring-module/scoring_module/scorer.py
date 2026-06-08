@@ -512,53 +512,29 @@ def _reports_dir() -> Path:
     return Path(JOB_DATA_ROOT) / "jobs" / "reports"
 
 
-def score_url(url: str) -> int:
-    """Score a single posting already in the DB, by URL. Returns 1 on success, else 0.
+def _posting_from_row(row: Posting) -> dict[str, Any]:
+    """Project a DB Posting row into the dict shape the scorer consumes."""
+    return {
+        "url": row.url,
+        "title": row.title or "",
+        "company": row.company or "",
+        "platform": row.platform or "",
+        "post_date": row.post_date,
+        "applicant_count": row.applicant_count,
+        "description_summary": row.description_summary or "",
+        "job_description_text": row.job_description_text or "",
+    }
 
-    Powers the interactive single-posting "Score" action in the TUI and web UI,
-    replacing the former job-scorer agent. Shares the batch scoring path, so it
-    also reuses near-duplicate verdicts and ratchets the company flags.
+
+def _score_postings(engine, postings: list[dict[str, Any]]) -> int:
+    """Score `postings` concurrently, persisting each. Returns the success count.
+
+    The shared core of every entry point: `MAX_BATCH_WORKERS` already bounds
+    concurrency, so callers pass the full set and let this self-batch — there is
+    no need to pre-chunk the list externally.
     """
-    engine = make_engine(_resolve_db_path())
-    with Session(engine) as session:
-        row = session.get(Posting, url)
-        if row is None:
-            print(f"[ERROR] no posting in DB for URL {url!r}", file=sys.stderr, flush=True)
-            return 0
-        posting = {
-            "url": row.url,
-            "title": row.title or "",
-            "company": row.company or "",
-            "platform": row.platform or "",
-            "post_date": row.post_date,
-            "applicant_count": row.applicant_count,
-            "description_summary": row.description_summary or "",
-            "job_description_text": row.job_description_text or "",
-        }
-    client = _make_client()
-    try:
-        _process(engine, client, _reports_dir(), posting)
-    except Exception as exc:
-        print(
-            f"[ERROR] {posting['company'] or '?'} — {posting['title'] or '?'}: {exc}",
-            file=sys.stderr,
-            flush=True,
-        )
-        return 0
-    print(f"[BATCH DONE] Scored 1/1 postings from {url}", flush=True)
-    return 1
-
-
-def score_batch(batch_file: str) -> int:
-    """Score all postings in a batch file. Returns count of successfully scored postings."""
-    db_path = _resolve_db_path()
-
-    with open(batch_file) as f:
-        postings = json.load(f)
-
     reports_dir = _reports_dir()
     client = _make_client()
-    engine = make_engine(db_path)
 
     def process(posting: dict[str, Any]) -> dict[str, Any]:
         return _process(engine, client, reports_dir, posting)
@@ -577,7 +553,67 @@ def score_batch(batch_file: str) -> int:
                     file=sys.stderr,
                     flush=True,
                 )
+    return scored_count
 
+
+def score_url(url: str) -> int:
+    """Score a single posting already in the DB, by URL. Returns 1 on success, else 0.
+
+    Powers the interactive single-posting "Score" action in the TUI and web UI,
+    replacing the former job-scorer agent. Shares the batch scoring path, so it
+    also reuses near-duplicate verdicts and ratchets the company flags.
+    """
+    engine = make_engine(_resolve_db_path())
+    with Session(engine) as session:
+        row = session.get(Posting, url)
+        if row is None:
+            print(f"[ERROR] no posting in DB for URL {url!r}", file=sys.stderr, flush=True)
+            return 0
+        posting = _posting_from_row(row)
+    client = _make_client()
+    try:
+        _process(engine, client, _reports_dir(), posting)
+    except Exception as exc:
+        print(
+            f"[ERROR] {posting['company'] or '?'} — {posting['title'] or '?'}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 0
+    print(f"[BATCH DONE] Scored 1/1 postings from {url}", flush=True)
+    return 1
+
+
+def score_urls(urls: list[str]) -> int:
+    """Score postings already in the DB, given their URLs. Returns the success count.
+
+    Reads each posting's stored fields (including `job_description_text`) straight
+    from the DB and self-batches, so the caller — e.g. job-preparer after the
+    prefilter pass — hands over a flat URL list instead of querying the DB,
+    re-fetching descriptions, and writing chunked batch files by hand.
+    """
+    engine = make_engine(_resolve_db_path())
+    postings: list[dict[str, Any]] = []
+    with Session(engine) as session:
+        for url in urls:
+            row = session.get(Posting, url)
+            if row is None:
+                print(f"[ERROR] no posting in DB for URL {url!r}", file=sys.stderr, flush=True)
+                continue
+            postings.append(_posting_from_row(row))
+
+    scored_count = _score_postings(engine, postings)
+    print(f"[BATCH DONE] Scored {scored_count}/{len(urls)} postings from URL list", flush=True)
+    return scored_count
+
+
+def score_batch(batch_file: str) -> int:
+    """Score all postings in a batch file. Returns count of successfully scored postings."""
+    with open(batch_file) as f:
+        postings = json.load(f)
+
+    engine = make_engine(_resolve_db_path())
+    scored_count = _score_postings(engine, postings)
     print(
         f"[BATCH DONE] Scored {scored_count}/{len(postings)} postings from {batch_file}", flush=True
     )
