@@ -88,6 +88,133 @@ class CompanyPosting(Base):
     __table_args__ = (Index("ix_company_postings_company_name", "company_name"),)
 
 
+# ── Multi-user configuration (spec 12, phase 1) ───────────────────────────────
+#
+# All user-facing inputs become data-driven and per-user. The pattern throughout
+# is "catalog + per-user selection": a catalog table holds the available items
+# (built-in rows have ``owner_uid`` NULL; a user's custom additions carry their
+# uid), and a ``user_*`` join table records which a given user has enabled. This
+# phase scopes ONLY configuration — postings/companies/scoring stay shared.
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    uid: Mapped[str] = mapped_column(String, primary_key=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[str | None] = mapped_column(String)
+
+
+class ConfigItem(Base):
+    """Catalog of known config keys (e.g. RESUME_FILE, ADZUNA_APP_ID)."""
+
+    __tablename__ = "config_items"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
+
+
+class UserConfigItem(Base):
+    """A user's value for one config key."""
+
+    __tablename__ = "user_config_items"
+
+    uid: Mapped[str] = mapped_column(String, ForeignKey("users.uid"), primary_key=True)
+    config_key: Mapped[str] = mapped_column(
+        String, ForeignKey("config_items.key"), primary_key=True
+    )
+    value: Mapped[str | None] = mapped_column(String)
+
+
+class Source(Base):
+    """Catalog of high-level job-search sources (the job-seeker's 7 platforms)."""
+
+    __tablename__ = "sources"
+
+    source_id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class UserSource(Base):
+    """Whether a user has a given source enabled for their searches."""
+
+    __tablename__ = "user_sources"
+
+    uid: Mapped[str] = mapped_column(String, ForeignKey("users.uid"), primary_key=True)
+    source_id: Mapped[str] = mapped_column(
+        String, ForeignKey("sources.source_id"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PrefilterRule(Base):
+    """One hard prefilter rule. ``category`` is one of the disqualifier sections:
+    description_phrases, title_terms, title_terms_unless_senior, seniority_exceptions."""
+
+    __tablename__ = "prefilter_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String)
+    value: Mapped[str] = mapped_column(String)
+    owner_uid: Mapped[str | None] = mapped_column(String, ForeignKey("users.uid"))
+
+
+class UserPrefilterRule(Base):
+    __tablename__ = "user_prefilter_rules"
+
+    uid: Mapped[str] = mapped_column(String, ForeignKey("users.uid"), primary_key=True)
+    rule_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("prefilter_rules.id"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ScoringModifierBlock(Base):
+    """A named scoring-modifier block the scorer LLM applies (``examples`` is JSON)."""
+
+    __tablename__ = "scoring_modifier_blocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String)
+    modifier: Mapped[int] = mapped_column(Integer)
+    examples: Mapped[str | None] = mapped_column(Text)
+    owner_uid: Mapped[str | None] = mapped_column(String, ForeignKey("users.uid"))
+
+
+class UserScoringModifier(Base):
+    __tablename__ = "user_scoring_modifiers"
+
+    uid: Mapped[str] = mapped_column(String, ForeignKey("users.uid"), primary_key=True)
+    block_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("scoring_modifier_blocks.id"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class TargetRoleItem(Base):
+    """A target-role entry. ``kind`` is one of: title, keyword, domain."""
+
+    __tablename__ = "target_role_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String)
+    value: Mapped[str] = mapped_column(String)
+    owner_uid: Mapped[str | None] = mapped_column(String, ForeignKey("users.uid"))
+
+
+class UserTargetRole(Base):
+    __tablename__ = "user_target_roles"
+
+    uid: Mapped[str] = mapped_column(String, ForeignKey("users.uid"), primary_key=True)
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("target_role_items.id"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 def make_engine(db_path: Path) -> Engine:
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
 

@@ -1,0 +1,45 @@
+# Structured default for the target-roles catalog (spec 12, phase 1).
+#
+# Seeds the target_role_items table. The rendered Markdown file that searchers
+# read (target-roles.md) is produced from the DB by harness_db.target_roles;
+# this YAML is only the built-in starter catalog. Keep the values in sync with
+# the human-readable template in target-roles.default.md.
+
+# Target role titles — used to build keyword search queries.
+titles:
+  - Principal Engineer
+  - Staff Engineer
+  - Distinguished Engineer
+  - Senior Staff Engineer
+  - Cloud Architect
+  - Platform Engineer
+  - Senior Software Developer
+  - Staff Software Developer
+  - Principal Software Engineer
+  - Head of Engineering
+
+# Title keywords — any posting whose title contains one qualifies by seniority.
+keywords:
+  - Principal
+  - Staff
+  - Distinguished
+  - Senior Staff
+  - Cloud Architect
+  - Platform Engineer
+  - Head of Engineering
+  - Senior Software
+  - Staff Software
+  - Senior Engineer
+  - Senior Developer
+  - Lead Engineer
+  - Lead Developer
+  - Senior Backend
+  - Senior Frontend
+  - Senior Full Stack
+
+# Domains of interest.
+domains:
+  - Cloud infrastructure
+  - Distributed systems
+  - AI / ML platform and infrastructure
+  - Developer platforms and internal tooling
