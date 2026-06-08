@@ -43,21 +43,19 @@ Call this the **needs-scoring list**. If this list is empty, skip Steps 2–3 an
 
 ## Step 2: Pre-filter Before Scoring
 
-Before writing batch files, filter the needs-scoring list to eliminate hard disqualifiers. This reduces scoring cost without losing any good candidates.
+Eliminate hard disqualifiers from the needs-scoring list before scoring. This reduces scoring cost without losing any good candidates.
 
-The hard-disqualifier keyword lists are **user-configurable** and live in one place: `$JOB_DATA_ROOT/disqualifiers.yaml`. Read that file (`Read $JOB_DATA_ROOT/disqualifiers.yaml`) and use its `prefilter` section. Do not hard-code keyword lists here; the file is the source of truth so the user can tune them.
+This is owned by the `harness-db prefilter` command — the single source of truth. It runs the centralized, **word-bounded** matcher (`harness_db.disqualifiers.prefilter_disqualifies`, the same one every searcher uses) over the live, user-configurable `$JOB_DATA_ROOT/disqualifiers.yaml`. **Do not read the YAML, hard-code keyword lists, or re-implement the matching in an ad-hoc script** — the word-bounded engine avoids substring false positives (e.g. "defi" no longer matches "defines"), so a hand-rolled `in` check would be wrong.
 
-Examine each posting's `title` and `description_summary`. Mark `status = 'skipped'` in the DB and remove from the list permanently if any of these match (all matching is case-insensitive):
-- **`prefilter.description_phrases`** — any phrase appears in the title or `description_summary`.
-- **`prefilter.title_terms`** — any term appears in the title (as the role itself, not e.g. "internal").
-- **`prefilter.title_terms_unless_senior`** — any term appears in the title, UNLESS the title also contains one of `prefilter.seniority_exceptions` (e.g. "senior", "staff", "principal" — those are seniority qualifiers, not contradictions).
+Activate the venv and run it with `--apply --json` so it both marks matches `skipped` in the DB and returns the disqualified URLs:
 
-Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool if not already loaded. For each hard-disqualified posting:
-```sql
-UPDATE postings SET status = 'skipped' WHERE url = '{url}'
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+. "$PROJECT_ROOT/venv/bin/activate"
+harness-db prefilter --status new --apply --json
 ```
 
-All remaining postings (not hard-disqualified) are sent to scoring — including those with unusual tech stacks. The scorer evaluates fit accurately and assigns a low score where appropriate.
+The command operates directly on the DB (status `new` → `skipped`) and prints a JSON array of the disqualified `{url, title}`. Remove those URLs from your needs-scoring list; the remainder go to scoring — including postings with unusual tech stacks (the scorer assigns a low score where appropriate). Stale-scored postings in the needs-scoring list already passed the prefilter when first seen, so this `new`-only pass is correct.
 
 Print: `[PRE-FILTER] {kept} kept for scoring | {hard} hard-disqualified (DB → skipped)`
 
@@ -69,33 +67,28 @@ Only proceed if the filtered needs-scoring list from Step 2 is non-empty.
 
 Scoring is handled by the `scoring_module` Python script, which calls the Claude API directly with a cached system prompt and uses internal threading for parallelism — no agent spawning needed.
 
-### 3a. Write batch files
+### 3a. Write the URL list
 
-Also include `job_description_text` in each batch entry if it is already populated in the DB (the scorer skips WebFetch when this field is present).
+The scorer reads each posting (including its stored `job_description_text`, so it skips WebFetch when that field is present) **straight from the DB** — you only hand it the URLs. No batch files, no chunking into groups, no re-fetching descriptions; the script self-batches with bounded internal parallelism.
 
-Split the filtered list into groups of 20. For each group, write a batch file:
+Write the surviving needs-scoring URLs (Step 1's list minus the Step 2 disqualified URLs), one per line, to `$JOB_DATA_ROOT/jobs/scoring-urls.txt`. Clean up any stale list from a previous run first:
 
-`$JOB_DATA_ROOT/jobs/scoring-batch-{N}.json` — an array of up to 20 posting objects with fields: `url`, `title`, `company`, `platform`, `post_date`, `applicant_count`, `description_summary`, `job_description_text` (if available).
-
-Example: 40 postings → 2 batch files of 20.
-
-Clean up any stale `scoring-batch-*.json` files from previous runs before writing new ones:
 ```bash
-rm -f $JOB_DATA_ROOT/jobs/scoring-batch-*.json
+rm -f $JOB_DATA_ROOT/jobs/scoring-urls.txt
 ```
 
 ### 3b. Run the scoring script
 
-Activate the venv from the harness root and pass all batch files to the scoring script in one call. The script handles parallelism internally and updates the DB directly.
+Activate the venv from the harness root and pass the URL file. The script handles parallelism internally and updates the DB directly.
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 JOB_DATA_ROOT=$(bash -c 'echo $JOB_DATA_ROOT')
 . "$PROJECT_ROOT/venv/bin/activate"
-python -m scoring_module "$JOB_DATA_ROOT/jobs/scoring-batch-"*.json
+python -m scoring_module --urls-file "$JOB_DATA_ROOT/jobs/scoring-urls.txt"
 ```
 
-The script prints `[SCORED]` for each posting and `[BATCH DONE]` per file. It sets `status = 'scored'` and populates all score fields in the DB — no further action needed.
+The script prints `[SCORED]`/`[REUSED]` for each posting and `[BATCH DONE]` at the end. It sets `status = 'scored'` and populates all score fields in the DB — no further action needed.
 
 ## Step 4: Query Ranked Results from DB (current batch only)
 
