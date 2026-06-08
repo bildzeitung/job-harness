@@ -116,20 +116,21 @@ scorer) reads them from the DB via `harness_db.disqualifiers`. No file seeding i
 needed: the schema seed in Step 0c (`harness-db sources enabled`) also seeds the
 built-in disqualifiers and imports any legacy `disqualifiers.yaml` on first run.
 
-## Step 0e: Ensure Target-Roles Config Exists
+## Step 0e: Generate Target-Roles Config from the DB
 
 The candidate's positive search inputs — target role titles, title keywords, and
-domains of interest — live in one user-editable file, `$JOB_DATA_ROOT/target-roles.md`,
-read by Step 0 (candidate summary) and every searcher. If it is missing, seed it
-from the bundled starter template:
+domains of interest — are **data-driven and per-user**, stored in the harness DB
+and managed from the TUI/web Settings → Target Roles panel. Regenerate
+`$JOB_DATA_ROOT/target-roles.md` from the DB so Step 0 (candidate summary) and
+every searcher read the user's current selection:
 
 ```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-DEST="$JOB_DATA_ROOT/target-roles.md"
-[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/target-roles.default.md" "$DEST"
+harness-db target-roles generate
 ```
 
-Do not overwrite an existing copy — the user may have tuned it.
+This always rewrites the file from the DB (the DB is the source of truth). The
+command seeds the built-in catalog and imports any legacy `target-roles.md` on
+first run, so an existing install migrates seamlessly.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 

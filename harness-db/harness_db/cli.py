@@ -33,6 +33,11 @@ disq_app = typer.Typer(
 )
 app.add_typer(disq_app, name="disqualifiers")
 
+roles_app = typer.Typer(
+    help="Manage target roles and generate target-roles.md.", no_args_is_help=True
+)
+app.add_typer(roles_app, name="target-roles")
+
 
 def _resolve_db(db: Optional[Path]) -> Path:
     try:
@@ -179,6 +184,37 @@ def disq_show(
 
     ensure_schema_and_seed()
     typer.echo(json.dumps(load_disqualifiers(uid), indent=2))
+
+
+@roles_app.command("list")
+def roles_list(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """List target-role items grouped by kind, with the user's enabled flag."""
+    from harness_db.seed import ensure_schema_and_seed
+    from harness_db.target_roles import list_target_roles
+
+    ensure_schema_and_seed()
+    for item in list_target_roles(uid):
+        mark = "x" if item.enabled else " "
+        custom = " *" if item.custom else ""
+        typer.echo(f"[{mark}] {item.id:>4} {item.kind:<8} {item.value}{custom}")
+
+
+@roles_app.command("generate")
+def roles_generate(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+    path: Optional[Path] = typer.Option(
+        None, "--path", help="Output path (default: $JOB_DATA_ROOT/target-roles.md)."
+    ),
+) -> None:
+    """Generate target-roles.md from the DB."""
+    from harness_db.seed import ensure_schema_and_seed
+    from harness_db.target_roles import write_target_roles_md
+
+    ensure_schema_and_seed()
+    written = write_target_roles_md(uid, path)
+    typer.echo(f"wrote {written}")
 
 
 if __name__ == "__main__":
