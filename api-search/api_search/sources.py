@@ -12,7 +12,6 @@ lives in the packaged ``sources_default.yaml``.
 from __future__ import annotations
 
 import html
-import os
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
@@ -26,6 +25,7 @@ from typing import Any, Callable, TypeVar
 
 import httpx
 import yaml
+from harness_db.config_store import get_config
 
 from api_search.candidate import queries_from_summary
 
@@ -161,8 +161,8 @@ def _fetch_in_parallel(
 
 def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
     """Keyword search against the Adzuna Canada endpoint, one query per target title."""
-    app_id = os.environ["ADZUNA_APP_ID"]
-    app_key = os.environ["ADZUNA_API_KEY"]
+    app_id = get_config("ADZUNA_APP_ID")
+    app_key = get_config("ADZUNA_API_KEY")
 
     def _fetch_query(q: str) -> list[dict[str, Any]]:
         try:
