@@ -101,6 +101,8 @@ Use `null` for `post_date` or `applicant_count` when not available.
 
 Forward the `[API-SEARCH:APPEND:ZIPRECRUITER]` line in your final report.
 
+To sanity-check the written file's shape, posting count, and per-field coverage, run `python -m api_search inspect "$JOB_DATA_ROOT/jobs/ziprecruiter-{YYYY-MM-DD}.json"` — do **not** hand-roll a `python3 -c` JSON one-liner for this.
+
 
 ## Post-Task Reflection and Error Logging
 
