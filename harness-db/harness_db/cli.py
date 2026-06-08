@@ -38,6 +38,12 @@ roles_app = typer.Typer(
 )
 app.add_typer(roles_app, name="target-roles")
 
+user_app = typer.Typer(help="Manage users (profiles) and the active user.", no_args_is_help=True)
+app.add_typer(user_app, name="user")
+
+config_app = typer.Typer(help="Manage per-user configuration values.", no_args_is_help=True)
+app.add_typer(config_app, name="config")
+
 
 def _resolve_db(db: Optional[Path]) -> Path:
     try:
@@ -215,6 +221,280 @@ def roles_generate(
     ensure_schema_and_seed()
     written = write_target_roles_md(uid, path)
     typer.echo(f"wrote {written}")
+
+
+# ── user management ───────────────────────────────────────────────────────────
+
+
+@user_app.command("add")
+def user_add(
+    uid: str = typer.Argument(..., help="New user id."),
+    use: bool = typer.Option(False, "--use", help="Also make this the active user."),
+) -> None:
+    """Create a user (with default selections) and optionally activate it."""
+    from sqlalchemy.orm import Session
+
+    from harness_db import users
+    from harness_db.config import set_active_uid
+    from harness_db.seed import ensure_schema_and_seed, ensure_user_defaults
+
+    engine = ensure_schema_and_seed()
+    try:
+        users.create_user(engine, uid)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    with Session(engine) as session:
+        ensure_user_defaults(session, uid)
+        session.commit()
+    if use:
+        set_active_uid(uid)
+    typer.echo(f"created user {uid}" + (" (active)" if use else ""))
+
+
+@user_app.command("list")
+def user_list() -> None:
+    """List users; the active user (dotfile) is marked with '*'."""
+    from harness_db import users
+    from harness_db.config import get_active_uid
+    from harness_db.seed import ensure_schema_and_seed
+
+    engine = ensure_schema_and_seed()
+    active = get_active_uid()
+    for u in users.list_users(engine):
+        mark = "*" if u.uid == active else " "
+        state = "active" if u.active else "inactive"
+        typer.echo(f"{mark} {u.uid:<20} {state}")
+
+
+@user_app.command("use")
+def user_use(uid: str = typer.Argument(..., help="User id to make active.")) -> None:
+    """Set the active user (writes the .active-user dotfile beside the DB)."""
+    from harness_db import users
+    from harness_db.config import set_active_uid
+    from harness_db.seed import ensure_schema_and_seed
+
+    engine = ensure_schema_and_seed()
+    if not users.user_exists(engine, uid):
+        typer.echo(f"Error: unknown user {uid!r} (create it with 'user add')", err=True)
+        raise typer.Exit(1)
+    set_active_uid(uid)
+    typer.echo(f"active user is now {uid}")
+
+
+@user_app.command("show")
+def user_show() -> None:
+    """Print the active user id."""
+    from harness_db.config import get_active_uid
+
+    typer.echo(get_active_uid())
+
+
+@user_app.command("set-active")
+def user_set_active(
+    uid: str = typer.Argument(..., help="User id."),
+    active: bool = typer.Option(True, "--active/--inactive", help="Set the active flag."),
+) -> None:
+    """Toggle a user's active flag."""
+    from harness_db import users
+    from harness_db.seed import ensure_schema_and_seed
+
+    engine = ensure_schema_and_seed()
+    try:
+        users.set_active(engine, uid, active)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{uid}: {'active' if active else 'inactive'}")
+
+
+# ── config values ─────────────────────────────────────────────────────────────
+
+
+@config_app.command("list")
+def config_list(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Show every config key and the user's resolved value (DB → env)."""
+    from harness_db.config_store import list_config
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    for key, value in list_config(uid).items():
+        typer.echo(f"{key:<16} {value if value is not None else '(unset)'}")
+
+
+@config_app.command("get")
+def config_get(
+    key: str = typer.Argument(..., help="Config key, e.g. RESUME_FILE."),
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Print a single resolved config value."""
+    from harness_db.config_store import get_config_optional
+
+    value = get_config_optional(key, uid)
+    if value is None:
+        typer.echo(f"Error: {key} is not set", err=True)
+        raise typer.Exit(1)
+    typer.echo(value)
+
+
+@config_app.command("set")
+def config_set(
+    key: str = typer.Argument(..., help="Config key, e.g. RESUME_FILE."),
+    value: str = typer.Argument(..., help="Value to store."),
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Set a config value for the user."""
+    from harness_db.config_store import set_config
+
+    set_config(key, value, uid)
+    typer.echo(f"set {key}")
+
+
+# ── disqualifier editing ──────────────────────────────────────────────────────
+
+
+@disq_app.command("list")
+def disq_list(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """List prefilter rules and scoring blocks with enabled flags and ids."""
+    from harness_db.disqualifiers import list_prefilter_rules, list_scoring_blocks
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    typer.echo("# Prefilter rules")
+    for r in list_prefilter_rules(uid):
+        mark = "x" if r.enabled else " "
+        custom = " *" if r.custom else ""
+        typer.echo(f"[{mark}] {r.id:>4} {r.category:<24} {r.value}{custom}")
+    typer.echo("\n# Scoring modifier blocks")
+    for b in list_scoring_blocks(uid):
+        mark = "x" if b.enabled else " "
+        custom = " *" if b.custom else ""
+        typer.echo(f"[{mark}] {b.id:>4} ({b.modifier:>4}) {b.name}{custom}")
+
+
+@disq_app.command("enable")
+def disq_enable(
+    rule_id: int = typer.Argument(..., help="Prefilter rule id."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Enable a prefilter rule for the user."""
+    from harness_db.disqualifiers import set_prefilter_enabled
+
+    set_prefilter_enabled(rule_id, True, uid)
+    typer.echo(f"enabled prefilter rule {rule_id}")
+
+
+@disq_app.command("disable")
+def disq_disable(
+    rule_id: int = typer.Argument(..., help="Prefilter rule id."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Disable a prefilter rule for the user."""
+    from harness_db.disqualifiers import set_prefilter_enabled
+
+    set_prefilter_enabled(rule_id, False, uid)
+    typer.echo(f"disabled prefilter rule {rule_id}")
+
+
+@disq_app.command("add")
+def disq_add(
+    category: str = typer.Argument(
+        ...,
+        help="One of: description_phrases, title_terms, "
+        "title_terms_unless_senior, seniority_exceptions.",
+    ),
+    value: str = typer.Argument(..., help="The keyword/phrase."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Add a custom prefilter rule."""
+    from harness_db.disqualifiers import add_prefilter_rule
+
+    try:
+        rid = add_prefilter_rule(category, value, uid)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"added prefilter rule {rid}")
+
+
+@disq_app.command("remove")
+def disq_remove(
+    rule_id: int = typer.Argument(..., help="Custom prefilter rule id."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Delete a custom prefilter rule (built-ins can only be disabled)."""
+    from harness_db.disqualifiers import delete_prefilter_rule
+
+    try:
+        delete_prefilter_rule(rule_id, uid)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"removed prefilter rule {rule_id}")
+
+
+# ── target-role editing ───────────────────────────────────────────────────────
+
+
+@roles_app.command("enable")
+def roles_enable(
+    item_id: int = typer.Argument(..., help="Target-role item id."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Enable a target-role item for the user."""
+    from harness_db.target_roles import set_enabled
+
+    set_enabled(item_id, True, uid)
+    typer.echo(f"enabled target role {item_id}")
+
+
+@roles_app.command("disable")
+def roles_disable(
+    item_id: int = typer.Argument(..., help="Target-role item id."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Disable a target-role item for the user."""
+    from harness_db.target_roles import set_enabled
+
+    set_enabled(item_id, False, uid)
+    typer.echo(f"disabled target role {item_id}")
+
+
+@roles_app.command("add")
+def roles_add(
+    kind: str = typer.Argument(..., help="One of: title, keyword, domain."),
+    value: str = typer.Argument(..., help="The role title / keyword / domain."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Add a custom target-role item."""
+    from harness_db.target_roles import add_target_role
+
+    try:
+        rid = add_target_role(kind, value, uid)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"added target role {rid}")
+
+
+@roles_app.command("remove")
+def roles_remove(
+    item_id: int = typer.Argument(..., help="Custom target-role item id."),
+    uid: Optional[str] = typer.Option(None, "--uid"),
+) -> None:
+    """Delete a custom target-role item (built-ins can only be disabled)."""
+    from harness_db.target_roles import delete_target_role
+
+    try:
+        delete_target_role(item_id, uid)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"removed target role {item_id}")
 
 
 if __name__ == "__main__":
