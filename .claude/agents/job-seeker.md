@@ -107,17 +107,14 @@ Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever
 
 Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
 
-## Step 0d: Ensure Disqualifiers Config Exists
+## Step 0d: Disqualifiers (data-driven)
 
-The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are centralized in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It is the single source of truth for **early disqualification** — the platform searchers, `api_search`, `job-preparer`, and the scorer all read it. If it does not exist, seed it from the bundled default so every consumer can read it:
-
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
-[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/disqualifiers.default.yaml" "$DEST"
-```
-
-Do not overwrite an existing copy — the user may have tuned it.
+The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are
+**data-driven and per-user** — they live in the harness DB and the user manages
+them from the TUI/web Settings. Every consumer (`api_search`, `job-preparer`, the
+scorer) reads them from the DB via `harness_db.disqualifiers`. No file seeding is
+needed: the schema seed in Step 0c (`harness-db sources enabled`) also seeds the
+built-in disqualifiers and imports any legacy `disqualifiers.yaml` on first run.
 
 ## Step 0e: Ensure Target-Roles Config Exists
 

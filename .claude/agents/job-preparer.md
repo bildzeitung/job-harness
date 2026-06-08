@@ -45,7 +45,13 @@ Call this the **needs-scoring list**. If this list is empty, skip Steps 2–3 an
 
 Before writing batch files, filter the needs-scoring list to eliminate hard disqualifiers. This reduces scoring cost without losing any good candidates.
 
-The hard-disqualifier keyword lists are **user-configurable** and live in one place: `$JOB_DATA_ROOT/disqualifiers.yaml`. Read that file (`Read $JOB_DATA_ROOT/disqualifiers.yaml`) and use its `prefilter` section. Do not hard-code keyword lists here; the file is the source of truth so the user can tune them.
+The hard-disqualifier keyword lists are **user-configurable and data-driven** — they live per-user in the harness DB (managed from the TUI/web Settings). Read the effective `prefilter` section with:
+
+```bash
+harness-db disqualifiers prefilter
+```
+
+This prints the `prefilter` JSON (`description_phrases`, `title_terms`, `title_terms_unless_senior`, `seniority_exceptions`) for the active user. Do not hard-code keyword lists here; the DB is the source of truth so the user can tune them. (The command also runs the one-time migration that imports any legacy `disqualifiers.yaml` into the DB on first use.)
 
 Examine each posting's `title` and `description_summary`. Mark `status = 'skipped'` in the DB and remove from the list permanently if any of these match (all matching is case-insensitive):
 - **`prefilter.description_phrases`** — any phrase appears in the title or `description_summary`.

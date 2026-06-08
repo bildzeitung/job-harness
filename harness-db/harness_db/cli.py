@@ -28,6 +28,11 @@ app = typer.Typer(help="Job-harness DB tools.", no_args_is_help=True)
 sources_app = typer.Typer(help="Manage job-search source selection.", no_args_is_help=True)
 app.add_typer(sources_app, name="sources")
 
+disq_app = typer.Typer(
+    help="Manage hard disqualifiers (prefilter + scoring).", no_args_is_help=True
+)
+app.add_typer(disq_app, name="disqualifiers")
+
 
 def _resolve_db(db: Optional[Path]) -> Path:
     try:
@@ -150,6 +155,30 @@ def sources_disable(
 
     set_enabled(source_id, False, uid)
     typer.echo(f"disabled {source_id}")
+
+
+@disq_app.command("prefilter")
+def disq_prefilter(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Print the user's effective prefilter section as JSON (job-preparer's read path)."""
+    from harness_db.disqualifiers import load_prefilter
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    typer.echo(json.dumps(load_prefilter(uid), indent=2))
+
+
+@disq_app.command("show")
+def disq_show(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Print the full effective disqualifiers (prefilter + scoring_modifiers) as JSON."""
+    from harness_db.disqualifiers import load_disqualifiers
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    typer.echo(json.dumps(load_disqualifiers(uid), indent=2))
 
 
 if __name__ == "__main__":
