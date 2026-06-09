@@ -75,8 +75,13 @@ def _ro_engine() -> Engine | None:
 
 
 def _rw_engine() -> Engine:
-    """Seeded engine for interactive edits (creates schema + defaults if needed)."""
-    return ensure_schema_and_seed(import_existing=False)
+    """Seeded engine for interactive edits (creates schema + defaults if needed).
+
+    Reuses the cached engine for the resolved DB path so repeated edits don't
+    rebuild the connection pool / reload the sqlite-vec extension each call; the
+    seed itself is idempotent and cheap on an already-seeded DB.
+    """
+    return ensure_schema_and_seed(_engine_for(str(get_db_path())), import_existing=False)
 
 
 # ── public loaders (DB → file fallback) ───────────────────────────────────────
@@ -264,7 +269,9 @@ def delete_prefilter_rule(rule_id: int, uid: str | None = None) -> None:
         if rule.owner_uid != uid:
             raise ValueError("Only custom rules you own can be deleted; disable built-ins instead.")
         session.execute(
-            UserPrefilterRule.__table__.delete().where(UserPrefilterRule.rule_id == rule_id)
+            UserPrefilterRule.__table__.delete().where(
+                UserPrefilterRule.uid == uid, UserPrefilterRule.rule_id == rule_id
+            )
         )
         session.delete(rule)
         session.commit()
@@ -346,7 +353,9 @@ def delete_scoring_block(block_id: int, uid: str | None = None) -> None:
                 "Only custom blocks you own can be deleted; disable built-ins instead."
             )
         session.execute(
-            UserScoringModifier.__table__.delete().where(UserScoringModifier.block_id == block_id)
+            UserScoringModifier.__table__.delete().where(
+                UserScoringModifier.uid == uid, UserScoringModifier.block_id == block_id
+            )
         )
         session.delete(block)
         session.commit()

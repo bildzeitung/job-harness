@@ -9,11 +9,12 @@ import dataclasses
 
 import reflex as rx
 from harness_db import config_store, disqualifiers, sources_store, target_roles, users
-from harness_db.config import get_active_uid, get_db_path, set_active_uid
+from harness_db.config import get_active_uid, set_active_uid
 from harness_db.disqualifiers import PREFILTER_CATEGORIES
-from harness_db.models import make_engine
 from harness_db.seed import ensure_schema_and_seed
 from harness_db.target_roles import KINDS
+
+from web.data import engine as _shared_engine
 
 
 @dataclasses.dataclass
@@ -74,7 +75,9 @@ class SettingsState(rx.State):
         self._reload()
 
     def _engine(self):
-        return make_engine(get_db_path())
+        # Reuse the process-wide cached engine (web.data.engine is lru_cached)
+        # so each event doesn't rebuild the connection pool.
+        return _shared_engine()
 
     def _reload(self):
         self.active_uid = get_active_uid()
@@ -156,7 +159,8 @@ class SettingsState(rx.State):
     # --- config --------------------------------------------------------------
 
     def set_config_edit(self, key: str, value: str):
-        self.config_edits[key] = value
+        # Reassign (not in-place mutate) so Reflex reliably tracks the change.
+        self.config_edits = {**self.config_edits, key: value}
 
     def save_config(self):
         for key, value in self.config_edits.items():

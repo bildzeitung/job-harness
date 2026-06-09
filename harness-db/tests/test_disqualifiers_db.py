@@ -60,6 +60,18 @@ def test_scoring_block_add_and_load():
     assert "No widgets" not in {b["name"] for b in cfg["scoring_modifiers"]}
 
 
+def test_new_user_is_provisioned_on_read_path():
+    """A freshly created user must see built-in disqualifiers via the read path,
+    not only after opening a Settings sub-tab."""
+    from harness_db import users
+    from harness_db.seed import ensure_schema_and_seed
+
+    engine = ensure_schema_and_seed(import_existing=False)
+    users.create_user(engine, "newbie")
+    pf = disqualifiers.load_prefilter("newbie")
+    assert any(pf.values())  # built-in prefilter rules enabled for the new user
+
+
 def test_db_takes_priority_over_file(monkeypatch, tmp_path):
     # Seed DB and add a custom rule, then write a conflicting yaml file.
     disqualifiers.add_prefilter_rule("title_terms", "fromdb", DEFAULT_UID)

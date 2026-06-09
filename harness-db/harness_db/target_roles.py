@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import textwrap
 from dataclasses import dataclass
+from functools import lru_cache
 
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from harness_db.config import get_active_uid, get_job_data_root
-from harness_db.models import TargetRoleItem, UserTargetRole
+from harness_db.config import get_active_uid, get_db_path, get_job_data_root
+from harness_db.models import TargetRoleItem, UserTargetRole, make_engine
 from harness_db.seed import ensure_schema_and_seed, ensure_user_defaults
 
 __all__ = [
@@ -45,8 +46,15 @@ class TargetRoleView:
     custom: bool
 
 
+@lru_cache(maxsize=8)
+def _engine_for(db_path_str: str) -> Engine:
+    return make_engine(db_path_str)
+
+
 def _engine() -> Engine:
-    return ensure_schema_and_seed(import_existing=False)
+    # Reuse the cached engine for the DB path so repeated reads/edits don't
+    # rebuild the connection pool each call; the seed is idempotent.
+    return ensure_schema_and_seed(_engine_for(str(get_db_path())), import_existing=False)
 
 
 def _enabled_by_kind(session: Session, uid: str) -> dict[str, list[str]]:
@@ -214,6 +222,10 @@ def delete_target_role(item_id: int, uid: str | None = None) -> None:
             return
         if item.owner_uid != uid:
             raise ValueError("Only custom items you own can be deleted; disable built-ins instead.")
-        session.execute(UserTargetRole.__table__.delete().where(UserTargetRole.item_id == item_id))
+        session.execute(
+            UserTargetRole.__table__.delete().where(
+                UserTargetRole.uid == uid, UserTargetRole.item_id == item_id
+            )
+        )
         session.delete(item)
         session.commit()

@@ -39,6 +39,7 @@ def create_user(engine: Engine, uid: str, active: bool = True) -> User:
         session.commit()
         session.refresh(user)
         session.expunge(user)
+    _provision_defaults(engine, uid)
     return user
 
 
@@ -46,13 +47,31 @@ def ensure_user(engine: Engine, uid: str, active: bool = True) -> User:
     """Return the user, creating it if absent (idempotent)."""
     with Session(engine) as session:
         user = session.get(User, uid)
-        if user is None:
+        created = user is None
+        if created:
             user = User(uid=uid, active=active, created_at=_now())
             session.add(user)
             session.commit()
             session.refresh(user)
         session.expunge(user)
+    if created:
+        _provision_defaults(engine, uid)
     return user
+
+
+def _provision_defaults(engine: Engine, uid: str) -> None:
+    """Enable every built-in catalog item for a newly created user.
+
+    Done at creation so the pipeline read paths (load_prefilter,
+    enabled_source_ids, target roles) see this user's selections immediately,
+    not only after they happen to open each Settings sub-tab. Imported lazily to
+    avoid a circular import (seed imports this module).
+    """
+    from harness_db.seed import ensure_user_defaults
+
+    with Session(engine) as session:
+        ensure_user_defaults(session, uid)
+        session.commit()
 
 
 def get_user(engine: Engine, uid: str) -> User | None:
