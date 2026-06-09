@@ -22,7 +22,7 @@ If the file already exists **and** its `generated` field matches today's date, s
 
 Otherwise:
 1. Read `bash -c 'echo $RESUME_FILE'` to get the resume path, then read the YAML file.
-2. Read `cat "$JOB_DATA_ROOT/target-roles.md"` (seeded in Step 0e — the user-editable list of target titles, keywords, and domains).
+2. Run `harness-db target-roles show` to render the user's target titles, keywords, and domains **straight from the DB** (the source of truth — no file involved).
 3. Synthesize and write `$JOB_DATA_ROOT/candidate-summary.json`:
 
 ```json
@@ -45,7 +45,7 @@ Otherwise:
 }
 ```
 
-Fill in actual values — do not leave placeholders. Draw `name` (`cv.name`), `headline`, `location`, `years_experience`, `notable`, and `stack` from the **resume YAML**; draw `target_titles`, `seniority_keywords`, and `domains` from **`target-roles.md`**. These positive fields drive every searcher's queries (`target_titles` × `domains`) and filters (`seniority_keywords`, `requirements`).
+Fill in actual values — do not leave placeholders. Draw `name` (`cv.name`), `headline`, `location`, `years_experience`, `notable`, and `stack` from the **resume YAML**; draw `target_titles`, `seniority_keywords`, and `domains` from the **`harness-db target-roles show`** output. These positive fields drive every searcher's queries (`target_titles` × `domains`) and filters (`seniority_keywords`, `requirements`).
 
 Hard **exclusions** are NOT part of this summary — they live in the single, user-editable `disqualifiers.yaml` (`prefilter` section, seeded in Step 0d) so every searcher, `job-preparer`, and the scorer apply one consistent list. Do not add an `exclude` array here.
 
@@ -116,21 +116,20 @@ scorer) reads them from the DB via `harness_db.disqualifiers`. No file seeding i
 needed: the schema seed in Step 0c (`harness-db sources enabled`) also seeds the
 built-in disqualifiers and imports any legacy `disqualifiers.yaml` on first run.
 
-## Step 0e: Generate Target-Roles Config from the DB
+## Step 0e: Target-Roles Config (read from the DB)
 
 The candidate's positive search inputs — target role titles, title keywords, and
 domains of interest — are **data-driven and per-user**, stored in the harness DB
-and managed from the TUI/web Settings → Target Roles panel. Regenerate
-`$JOB_DATA_ROOT/target-roles.md` from the DB so Step 0 (candidate summary) and
-every searcher read the user's current selection:
+and managed from the TUI/web Settings → Target Roles panel. There is no file to
+generate: Step 0 reads them on demand straight from the DB with
 
 ```bash
-harness-db target-roles generate
+harness-db target-roles show
 ```
 
-This always rewrites the file from the DB (the DB is the source of truth). The
-command seeds the built-in catalog and imports any legacy `target-roles.md` on
-first run, so an existing install migrates seamlessly.
+which renders the user's current selection from the DB (the source of truth).
+The command seeds the built-in catalog and imports any legacy `target-roles.md`
+on first run, so an existing install migrates seamlessly.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 

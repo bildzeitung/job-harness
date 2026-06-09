@@ -101,12 +101,13 @@ def _format_md(titles: list[str], keywords: list[str], domains: list[str]) -> st
     domain_lines = "\n".join(f"- {d}" for d in domains) or "- (none configured)"
     return f"""# Target Job Roles
 
-This is the canonical list of job types you are targeting. Every `job-seeker`
-searcher reads this file at startup (via `$JOB_DATA_ROOT/target-roles.md`)
+This is the canonical list of job types you are targeting. The `job-seeker`
+pipeline reads it from the harness DB at runtime (`harness-db target-roles show`)
 instead of using hardcoded lists.
 
-**Generated from the harness DB** — edit it from the TUI/web Settings → Target
-Roles panel, not by hand (regenerating overwrites manual edits).
+**Rendered from the harness DB** — edit it from the TUI/web Settings → Target
+Roles panel, not by hand (this rendering reflects the DB, which is the source
+of truth).
 
 Positive *targets* live here. Hard *exclusions* live in the disqualifiers config.
 
@@ -127,12 +128,12 @@ seniority:
 
 {domain_lines}
 
-## How to Use This File
+## How to Use This
 
-Searchers read it from your job-data root:
+The pipeline renders this straight from the DB:
 
 ```bash
-cat "$JOB_DATA_ROOT/target-roles.md"
+harness-db target-roles show
 ```
 
 Use the **Title Keywords** section to drive search queries and filter results.

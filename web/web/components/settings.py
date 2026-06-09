@@ -246,12 +246,6 @@ def roles_section() -> rx.Component:
                 size="2",
             ),
             rx.button("Add", on_click=SettingsState.add_role, size="2"),
-            rx.button(
-                "Generate target-roles.md",
-                on_click=SettingsState.generate_roles,
-                size="2",
-                variant="soft",
-            ),
             spacing="2",
         ),
         spacing="2",

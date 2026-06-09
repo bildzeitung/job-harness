@@ -35,7 +35,8 @@ disq_app = typer.Typer(
 app.add_typer(disq_app, name="disqualifiers")
 
 roles_app = typer.Typer(
-    help="Manage target roles and generate target-roles.md.", no_args_is_help=True
+    help="Manage target roles (the DB is the source of truth; `show` renders them).",
+    no_args_is_help=True,
 )
 app.add_typer(roles_app, name="target-roles")
 
@@ -294,6 +295,22 @@ def roles_list(
         typer.echo(f"[{mark}] {item.id:>4} {item.kind:<8} {item.value}{custom}")
 
 
+@roles_app.command("show")
+def roles_show(
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Render the target-roles markdown from the DB to stdout (no file written).
+
+    This is what the pipeline reads at runtime — the DB is the source of truth,
+    so consumers take it straight from here instead of a generated file.
+    """
+    from harness_db.seed import ensure_schema_and_seed
+    from harness_db.target_roles import render_target_roles_md
+
+    ensure_schema_and_seed()
+    typer.echo(render_target_roles_md(uid))
+
+
 @roles_app.command("generate")
 def roles_generate(
     uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
@@ -301,7 +318,8 @@ def roles_generate(
         None, "--path", help="Output path (default: $JOB_DATA_ROOT/target-roles.md)."
     ),
 ) -> None:
-    """Generate target-roles.md from the DB."""
+    """Write target-roles.md from the DB (optional escape hatch; the pipeline
+    reads from the DB directly via `target-roles show`, not this file)."""
     from harness_db.seed import ensure_schema_and_seed
     from harness_db.target_roles import write_target_roles_md
 

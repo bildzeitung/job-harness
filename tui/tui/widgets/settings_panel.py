@@ -48,7 +48,6 @@ class SettingsPanel(Widget):
         Binding("ctrl+k", "make_active", "Make active", show=False, priority=True),
         Binding("ctrl+t", "toggle_active_flag", "Toggle active flag", show=False, priority=True),
         Binding("ctrl+s", "save_config", "Save config", show=False, priority=True),
-        Binding("ctrl+g", "generate_roles", "Generate target-roles.md", show=False, priority=True),
     ]
 
     # Which sub-tab(s) each accelerator action applies to.
@@ -58,7 +57,6 @@ class SettingsPanel(Widget):
         "make_active": {"profile"},
         "toggle_active_flag": {"profile"},
         "save_config": {"config"},
-        "generate_roles": {"roles"},
     }
 
     def __init__(self, **kwargs) -> None:
@@ -138,9 +136,6 @@ class SettingsPanel(Widget):
                 yield Input(placeholder="title / keyword / domain", id="role-value")
                 yield Button("[u]A[/u]dd", id="add-role-btn", variant="primary")
                 yield Button("[u]D[/u]elete custom", id="del-role-btn", variant="error")
-                yield Button(
-                    "[u]G[/u]enerate target-roles.md", id="gen-roles-btn", variant="success"
-                )
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -349,9 +344,6 @@ class SettingsPanel(Widget):
     def action_save_config(self) -> None:
         self._save_config()
 
-    def action_generate_roles(self) -> None:
-        self._generate_roles()
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         handler = {
             "add-user-btn": self._add_user,
@@ -364,7 +356,6 @@ class SettingsPanel(Widget):
             "del-scoring-btn": self._del_scoring,
             "add-role-btn": self._add_role,
             "del-role-btn": self._del_role,
-            "gen-roles-btn": self._generate_roles,
         }.get(event.button.id)
         if handler:
             handler()
@@ -482,11 +473,3 @@ class SettingsPanel(Widget):
             self.notify(str(e), severity="error")
             return
         self._load_roles()
-
-    def _generate_roles(self) -> None:
-        try:
-            written = target_roles.write_target_roles_md(self._uid)
-        except Exception as e:
-            self.notify(f"Generate failed: {e}", severity="error")
-            return
-        self.notify(f"Wrote {written}")

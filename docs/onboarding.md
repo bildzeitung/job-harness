@@ -222,10 +222,12 @@ tuning carries over. They are complementary: **target roles** say what to
 ### Target roles — what to look for
 
 The role titles, the title keywords that drive search queries and seniority
-filtering, and your domains of interest. Every `job-seeker` searcher reads
-`$JOB_DATA_ROOT/target-roles.md`, which is now **generated from the DB** (Settings
-→ Target Roles, or `harness-db target-roles generate`) and feeds the generated
+filtering, and your domains of interest. These live in the DB (the source of
+truth); `job-seeker` reads them **directly** with `harness-db target-roles show`
+(Settings → Target Roles to edit) and folds them into the generated
 `candidate-summary.json` (name/headline/stack/location come from your resume).
+`harness-db target-roles generate` can still write `$JOB_DATA_ROOT/target-roles.md`
+for manual inspection, but the pipeline no longer depends on that file.
 Built-ins seed from
 [`harness-db/harness_db/target-roles.default.yaml`](../harness-db/harness_db/target-roles.default.yaml).
 

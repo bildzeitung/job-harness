@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from typer.testing import CliRunner
 
-from harness_db import target_roles
+from harness_db import cli, target_roles
 from harness_db.config import DEFAULT_UID
 
 
@@ -58,3 +59,12 @@ def test_write_target_roles_md_to_path(tmp_path):
     written = target_roles.write_target_roles_md(DEFAULT_UID, out)
     assert written == out
     assert out.read_text().startswith("# Target Job Roles")
+
+
+def test_cli_show_renders_to_stdout_without_writing_a_file(tmp_path):
+    """`target-roles show` prints the rendered markdown and writes no file."""
+    result = CliRunner().invoke(cli.app, ["target-roles", "show", "--uid", DEFAULT_UID])
+    assert result.exit_code == 0
+    assert "# Target Job Roles" in result.stdout
+    assert "Principal Engineer" in result.stdout  # a seeded built-in title
+    assert not (tmp_path / "target-roles.md").exists()

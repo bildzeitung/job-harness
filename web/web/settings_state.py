@@ -221,11 +221,3 @@ class SettingsState(rx.State):
             self.message = str(e)
             return
         self._reload()
-
-    def generate_roles(self):
-        try:
-            written = target_roles.write_target_roles_md(self.active_uid)
-        except Exception as e:
-            self.message = f"Generate failed: {e}"
-            return
-        self.message = f"Wrote {written}"

@@ -1,9 +1,10 @@
 # Target Job Roles
 
-This is the canonical list of job types you are targeting. Every `job-seeker`
-searcher reads this file at startup (via `$JOB_DATA_ROOT/target-roles.md`)
-instead of using hardcoded lists. **This is your file to edit** — it ships as a
-sensible senior-engineering starter; tune it to your own search.
+This is a sample of the canonical list of job types you are targeting. The live
+values live in the harness DB (the source of truth) — edit them from the TUI/web
+Settings → Target Roles panel. The `job-seeker` pipeline reads them directly with
+`harness-db target-roles show` instead of using hardcoded lists. This file ships
+as a sensible senior-engineering starter and is imported once on first run.
 
 Positive *targets* live here. Hard *exclusions* live in
 `$JOB_DATA_ROOT/disqualifiers.yaml`.
@@ -43,13 +44,14 @@ Replace these examples with the domains your resume actually targets:
 - AI / ML platform and infrastructure
 - Developer platforms and internal tooling
 
-## How to Use This File
+## How to Use This
 
-Searchers read it from your job-data root:
+The pipeline renders the live values straight from the DB:
 
 ```bash
-cat "$JOB_DATA_ROOT/target-roles.md"
+harness-db target-roles show
 ```
 
 Use the **Title Keywords** section to drive search queries and filter results.
-Do not hardcode role lists in individual agent files — edit this file instead.
+Do not hardcode role lists in individual agent files — edit them in Settings →
+Target Roles instead.
