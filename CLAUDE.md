@@ -20,11 +20,16 @@ A [RenderCV](https://github.com/rendercv/rendercv)-based resume project. The sou
 
 ## Configuration
 
-The resume file path is configured as an environment variable. Each user sets this in their local `.claude/settings.local.json` (gitignored — never committed):
+Configuration is **data-driven and per-user** (spec 12, phase 1): the values live
+in the harness DB and are edited from the TUI/web **Settings** tab or the
+`harness-db config` CLI. Only the **bootstrap** pointers needed to find the DB
+before a user is known stay in `.claude/settings.local.json` (gitignored — never
+committed):
 
 ```json
 {
   "env": {
+    "HARNESS_DB": "/absolute/path/to/job-data/jobs/postings.db",
     "ADZUNA_APP_ID": "**REDACTED**",
     "ADZUNA_API_KEY": "**REDACTED**",
     "JOB_DATA_ROOT": "/absolute/path/to/job-data",
@@ -34,15 +39,28 @@ The resume file path is configured as an environment variable. Each user sets th
 }
 ```
 
-Agents read this at runtime via `bash -c 'echo $RESUME_FILE'`. This makes the harness shareable — clone the repo, set `RESUME_FILE`, and it works for any resume.
+`HARNESS_DB` locates the SQLite DB directly; if unset it falls back to
+`$JOB_DATA_ROOT/jobs/postings.db`. `RESUME_FILE`, `ADZUNA_APP_ID`,
+`ADZUNA_API_KEY`, and `JOB_DATA_ROOT` are now **DB config items** resolved via
+`harness_db.config_store.get_config(key, uid)` = the active user's stored value →
+the env / `settings.local.json` fallback. On first run the harness seeds a
+`default` user and **imports** these env values + the legacy config files into it,
+so existing single-user setups keep working unchanged; thereafter edit them in
+Settings. The active user is resolved CLI flag → `.active-user` dotfile (beside
+the DB) → `default`. Agents still read `RESUME_FILE` at runtime via
+`bash -c 'echo $RESUME_FILE'` (env fallback).
 
 `JOB_TOP_N` (optional, default `5`) controls how many top-ranked postings `job-preparer`'s `phase: score` returns for the user to pick from. Omit it to keep the default of 5.
 
 ### Disqualifiers
 
-The pipeline's hard disqualifiers live in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It holds both the pre-filter keyword lists (`prefilter`) and the scoring modifiers (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer: the platform searchers (and the `api_search` module) drop matching postings at search time so noise never enters the DB, and `job-preparer` re-applies it to mark any survivors `skipped` before scoring. Edit this file to tune disqualifier behavior — it is the single source of truth read by the `job-seeker-*` search agents, `api_search`, `scoring_module`, and `job-preparer`. The loader lives in `harness_db.disqualifiers`; if the file is missing it is seeded from `harness-db/harness_db/disqualifiers.default.yaml`.
+The pipeline's hard disqualifiers are **data-driven and per-user**, stored in the DB and edited from Settings → Disqualifiers (or `harness-db disqualifiers …`). They hold both the pre-filter keyword rules (`prefilter`) and the scoring-modifier blocks (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer: the platform searchers (and the `api_search` module) drop matching postings at search time so noise never enters the DB, and `job-preparer` re-applies it to mark any survivors `skipped` before scoring. The loader lives in `harness_db.disqualifiers` (DB-backed, with a legacy `disqualifiers.yaml` file fallback when no DB exists); built-ins seed from `harness-db/harness_db/disqualifiers.default.yaml` and any existing `disqualifiers.yaml` is imported once on first run. Read by the `job-seeker-*` search agents, `api_search`, `scoring_module`, and `job-preparer`.
 
-Positive search inputs are NOT in this file. The target role titles, title keywords, and domains of interest live in one user-editable file, `$JOB_DATA_ROOT/target-roles.md` (seeded from `harness-db/harness_db/target-roles.default.md` if missing — `job-seeker` Step 0e does this and never overwrites a tuned copy). Everything else (name, headline, stack, location, work-type/eligibility/employment) comes from the resume. `job-seeker` Step 0 synthesizes the resume plus `target-roles.md` into the generated `candidate-summary.json` that every searcher reads. Exclusions belong in `disqualifiers.yaml`; positive targets belong in `target-roles.md`.
+Positive search inputs are also DB-driven. The target role titles, title keywords, and domains of interest live per-user in the DB (Settings → Target Roles, or `harness-db target-roles …`); built-ins seed from `harness-db/harness_db/target-roles.default.yaml`. `job-seeker` Step 0e regenerates `$JOB_DATA_ROOT/target-roles.md` from the DB (`harness-db target-roles generate`) via the shared `harness_db.target_roles` library the TUI and web both use. Everything else (name, headline, stack, location, work-type/eligibility/employment) comes from the resume. `job-seeker` Step 0 synthesizes the resume plus the generated `target-roles.md` into `candidate-summary.json` that every searcher reads. Exclusions belong in disqualifiers; positive targets in target roles.
+
+### Source selection
+
+Which of the 7 high-level sources run is a **per-user DB selection** (Settings → Sources, or `harness-db sources enable/disable`), read by `job-seeker` via `harness-db sources enabled`. `/job-search` no longer prompts for sources; `--skip`/`--only` remain as transient single-run overrides. The loader is `harness_db.sources_store`.
 
 **`ANTHROPIC_API_KEY` is not required.** The `scoring_module` Python script authenticates by falling back to the OAuth token in `~/.claude/.credentials.json` (the same session Claude Code uses). If you do have an API key, setting it takes priority.
 
@@ -60,11 +78,16 @@ Outputs land in `rendercv_output/` as PDF, HTML, Markdown, Typst, and page image
 ## Front-ends
 
 Two UIs sit on top of the shared `harness-db` data layer (`harness_db.queries`,
-`harness_db.config`, `harness_db.agent_io`) and stay in sync with the same SQLite DB:
+`harness_db.config`, `harness_db.config_store`, `harness_db.sources_store`,
+`harness_db.disqualifiers`, `harness_db.target_roles`, `harness_db.users`,
+`harness_db.agent_io`) and stay in sync with the same SQLite DB. Both have a
+**Settings** tab (at parity) for the user profile, config values, source
+selection, disqualifiers, and target roles — all going through those shared
+libraries so neither front-end forks the logic:
 
 - **TUI** (`tui/`) — Textual app. Run with `job-tui`.
 - **Web** (`web/`) — Reflex app at TUI parity (browse, sort, detail, status
-  changes, and triggering single-posting scoring/job-preparer with live-streamed output).
+  changes, Settings, and triggering single-posting scoring/job-preparer with live-streamed output).
   Dev: `cd web && reflex run`. Docker: `docker compose -f web/docker-compose.yml up --build`
   (the lean `web` image plus an `agent-runner` image that isolates the `claude`
   CLI + credentials for in-browser agent runs). See `web/README.md`.

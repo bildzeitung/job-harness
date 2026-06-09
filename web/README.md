@@ -39,7 +39,10 @@ docker compose -f web/docker-compose.yml up --build web
 docker compose -f web/docker-compose.yml up --build
 ```
 
-The DB is read live from the bind-mounted `JOB_DATA_ROOT` (`/data/jobs/postings.db`).
+The DB is located by `HARNESS_DB` (a path straight to the SQLite file), falling
+back to the bind-mounted `$JOB_DATA_ROOT/jobs/postings.db` (`/data/jobs/postings.db`)
+when unset. The web **Settings** tab edits the per-user config, sources,
+disqualifiers, and target roles in that same DB.
 
 ### Notes / caveats
 

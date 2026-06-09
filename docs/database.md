@@ -1,11 +1,21 @@
 # Database Schema
 
-The harness uses a single SQLite database at `$JOB_DATA_ROOT/jobs/postings.db`.
+The harness uses a single SQLite database located by the **`HARNESS_DB`** env var
+(a path straight to the file). If `HARNESS_DB` is unset it falls back to the
+historical `$JOB_DATA_ROOT/jobs/postings.db`. Decoupling the DB path from
+`JOB_DATA_ROOT` lets `JOB_DATA_ROOT` itself be a per-user, DB-stored config value.
 
-Three tables:
+Core tables:
 - **`postings`** — one row per job posting URL; tracks the full scoring/selection/application lifecycle.
 - **`companies`** — one row per hiring company; persists research findings and remote/Canada confirmation across pipeline runs.
 - **`company_postings`** — links each posting to its hiring company (1 company : N postings).
+
+Multi-user configuration tables (spec 12, phase 1) — see
+[the section below](#multi-user-configuration-tables):
+- **`users`**, **`config_items`** / **`user_config_items`**, **`sources`** /
+  **`user_sources`**, **`prefilter_rules`** / **`user_prefilter_rules`**,
+  **`scoring_modifier_blocks`** / **`user_scoring_modifiers`**,
+  **`target_role_items`** / **`user_target_roles`**.
 
 Plus one vector sidecar:
 - **`postings_vec`** — a [sqlite-vec](https://github.com/asg017/sqlite-vec) virtual table holding a 1024-dim embedding per posting (keyed by URL, cosine distance), created and loaded by `make_engine`. Powers semantic repost-dedup and score-reuse; see [embeddings.md](embeddings.md).
@@ -277,3 +287,52 @@ job-preparer  (SELECT notes FROM companies WHERE name IN (...))
 job-preparer  →  resume-tailor prompt + cover-letter-creator prompt
                   (company_notes passed inline when spawning each agent)
 ```
+
+## Multi-user configuration tables
+
+Phase 1 of the multi-user evolution (spec 12) makes all user-facing inputs
+data-driven and per-user. The pattern is **catalog + per-user selection**: a
+catalog table holds the available items (built-in rows have `owner_uid` NULL; a
+user's custom additions carry their `uid`), and a `user_*` join table records
+which a given user has enabled. This phase scopes **only configuration** —
+`postings`/`companies`/scoring stay shared and unscoped.
+
+All tables are SQLAlchemy 2.0 declarative models in
+`harness-db/harness_db/models.py`, created via `Base.metadata.create_all` and
+seeded/migrated by `harness_db.seed.ensure_schema_and_seed`.
+
+| Table | Purpose |
+|-------|---------|
+| `users` | `uid` PK, `active` flag, `created_at`. |
+| `config_items` | Catalog of config keys (`JOB_DATA_ROOT`, `RESUME_FILE`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY`). |
+| `user_config_items` | Per-user value for a config key (PK `uid`+`config_key`). |
+| `sources` | Catalog of the 7 high-level search sources. |
+| `user_sources` | Per-user enabled flag for a source. |
+| `prefilter_rules` | Prefilter rule: `category` (one of the 4 disqualifier sections) + `value`; `owner_uid` NULL = built-in. |
+| `user_prefilter_rules` | Per-user enabled flag for a prefilter rule. |
+| `scoring_modifier_blocks` | Named scoring-modifier block: `name`, `modifier`, `examples` (JSON). |
+| `user_scoring_modifiers` | Per-user enabled flag for a scoring block. |
+| `target_role_items` | Target-role entry: `kind` (`title`/`keyword`/`domain`) + `value`. |
+| `user_target_roles` | Per-user enabled flag for a target-role item. |
+
+### Resolution & migration
+
+- **Config values** resolve via `harness_db.config_store.get_config(key, uid)`:
+  the user's DB value first, then the env var / `settings.local.json` fallback
+  (so an un-migrated single-user install keeps working).
+- **Sources / disqualifiers / target roles** read the active user's enabled rows
+  (`harness_db.sources_store`, `harness_db.disqualifiers`,
+  `harness_db.target_roles`), falling back to the legacy
+  `disqualifiers.yaml` only when no DB exists.
+- On first run `ensure_schema_and_seed` seeds the built-in catalogs, creates the
+  `default` user with everything enabled, and **imports** any existing
+  `sources-config.json`, `disqualifiers.yaml`, `target-roles.md`, and env config
+  into that user — a one-time migration that never clobbers later UI edits.
+- The **active user** is resolved CLI flag → `.active-user` dotfile (beside the
+  DB file) → `default`.
+
+### Editing
+
+Both front-ends edit these tables through the same shared libraries (TUI
+**Settings** tab; web **Settings** tab), and the `harness-db` CLI exposes
+`user`, `config`, `sources`, `disqualifiers`, and `target-roles` command groups.

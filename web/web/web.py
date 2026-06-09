@@ -6,6 +6,8 @@ import reflex as rx
 
 from web.pages.companies import companies_tab
 from web.pages.jobs import jobs_tab
+from web.pages.settings import settings_tab
+from web.settings_state import SettingsState
 from web.state import AppState
 
 
@@ -27,9 +29,11 @@ def index() -> rx.Component:
                 rx.tabs.list(
                     rx.tabs.trigger("Jobs", value="jobs"),
                     rx.tabs.trigger("Companies", value="companies"),
+                    rx.tabs.trigger("Settings", value="settings"),
                 ),
                 rx.tabs.content(jobs_tab(), value="jobs", padding_top="1em"),
                 rx.tabs.content(companies_tab(), value="companies", padding_top="1em"),
+                rx.tabs.content(settings_tab(), value="settings", padding_top="1em"),
                 default_value="jobs",
                 width="100%",
             ),
@@ -44,4 +48,4 @@ def index() -> rx.Component:
 
 # Theme is configured via RadixThemesPlugin in rxconfig.py.
 app = rx.App()
-app.add_page(index, route="/", title="Job Harness", on_load=AppState.load)
+app.add_page(index, route="/", title="Job Harness", on_load=[AppState.load, SettingsState.load])

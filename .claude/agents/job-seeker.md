@@ -86,41 +86,51 @@ If a table already exists, `CREATE TABLE IF NOT EXISTS` makes this a no-op.
 
 ## Step 0c: Load Sources Configuration
 
-Read `$JOB_DATA_ROOT/jobs/sources-config.json`. This file is written by the job-search skill before spawning this agent and lists which sources are active for this run.
+Source selection is **data-driven**: it lives per-user in the harness DB (managed
+from the TUI/web Settings, not a config file). Read the enabled set from the DB:
 
-If the file exists: parse its `enabled` array and store as `enabled_sources`.
-If the file does not exist or cannot be read: default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
+```bash
+harness-db sources enabled
+```
+
+This prints `{"enabled": [...]}`. Parse the `enabled` array and store it as
+`enabled_sources`. (This command also runs the one-time migration that imports any
+legacy `sources-config.json` into the DB on first use.)
+
+If the caller passed an explicit `enabled_sources` list in the spawn prompt (a
+transient `--skip`/`--only` override from the job-search skill), use that list
+instead of querying the DB.
+
+If the command fails for any reason, default to all 7 enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
 
 Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever, Ashby, Workable, and Recruitee); the `remotive` source runs three remote-jobs boards in one agent (Remotive, Himalayas, and We Work Remotely).
 
 Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
 
-## Step 0d: Ensure Disqualifiers Config Exists
+## Step 0d: Disqualifiers (data-driven)
 
-The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are centralized in one user-editable file: `$JOB_DATA_ROOT/disqualifiers.yaml`. It is the single source of truth for **early disqualification** — the platform searchers, `api_search`, `job-preparer`, and the scorer all read it. If it does not exist, seed it from the bundled default so every consumer can read it:
+The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are
+**data-driven and per-user** — they live in the harness DB and the user manages
+them from the TUI/web Settings. Every consumer (`api_search`, `job-preparer`, the
+scorer) reads them from the DB via `harness_db.disqualifiers`. No file seeding is
+needed: the schema seed in Step 0c (`harness-db sources enabled`) also seeds the
+built-in disqualifiers and imports any legacy `disqualifiers.yaml` on first run.
 
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-DEST="$JOB_DATA_ROOT/disqualifiers.yaml"
-[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/disqualifiers.default.yaml" "$DEST"
-```
-
-Do not overwrite an existing copy — the user may have tuned it.
-
-## Step 0e: Ensure Target-Roles Config Exists
+## Step 0e: Generate Target-Roles Config from the DB
 
 The candidate's positive search inputs — target role titles, title keywords, and
-domains of interest — live in one user-editable file, `$JOB_DATA_ROOT/target-roles.md`,
-read by Step 0 (candidate summary) and every searcher. If it is missing, seed it
-from the bundled starter template:
+domains of interest — are **data-driven and per-user**, stored in the harness DB
+and managed from the TUI/web Settings → Target Roles panel. Regenerate
+`$JOB_DATA_ROOT/target-roles.md` from the DB so Step 0 (candidate summary) and
+every searcher read the user's current selection:
 
 ```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-DEST="$JOB_DATA_ROOT/target-roles.md"
-[ -e "$DEST" ] || cp "$PROJECT_ROOT/harness-db/harness_db/target-roles.default.md" "$DEST"
+harness-db target-roles generate
 ```
 
-Do not overwrite an existing copy — the user may have tuned it.
+This always rewrites the file from the DB (the DB is the source of truth). The
+command seeds the built-in catalog and imports any legacy `target-roles.md` on
+first run, so an existing install migrates seamlessly.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 

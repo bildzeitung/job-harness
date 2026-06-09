@@ -67,3 +67,25 @@ TabPane {
     background: $panel;
     padding: 0 1;
 }
+
+#settings-panel {
+    height: 1fr;
+}
+
+.settings-row {
+    height: auto;
+    padding: 1 0;
+}
+
+.settings-row Input {
+    width: 30;
+}
+
+.settings-row Button {
+    margin: 0 1;
+}
+
+#config-fields Input {
+    width: 1fr;
+    margin-bottom: 1;
+}

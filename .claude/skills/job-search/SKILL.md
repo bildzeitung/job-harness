@@ -8,37 +8,29 @@ Run the complete job search pipeline.
 
 ## Step 0: Determine Active Sources
 
+Source selection is **data-driven and per-user** — it lives in the harness DB and
+the user manages it from the TUI/web **Settings → Sources** panel. **Do not prompt
+the user about sources**, and do not write any config file. The `job-seeker` agent
+reads the enabled set directly from the DB (`harness-db sources enabled`).
+
 The 7 available sources are: `linkedin`, `indeed`, `adzuna`, `ziprecruiter`, `greenhouse`, `remotive`, `research`
 
-**If args were provided with the skill invocation:**
-- `--skip=<csv>` → disable those sources, run all others (e.g. `--skip=research`)
-- `--only=<csv>` → run only those sources, disable all others (e.g. `--only=linkedin,adzuna`)
-- Compute `enabled_sources` from the args and skip to writing the config file below.
+**Optional transient override (args only):** if the skill was invoked with args,
+treat them as a one-run override that does **not** change the stored selection:
+- `--skip=<csv>` → run all enabled sources except these (e.g. `--skip=research`)
+- `--only=<csv>` → run only these (e.g. `--only=linkedin,adzuna`)
 
-**If no args were provided:** ask the user, in plain text, which sources to **skip** as a comma-separated list. Do **not** use AskUserQuestion. Wait for the reply before continuing. An empty reply (or "none") means run all 7.
-
-Ask:
-
-> Which sources should be skipped this run? Reply with a comma-separated list, or leave empty / say "none" to run all.
-> Available: `linkedin` (MCP, needs active browser session), `indeed` (MCP), `adzuna` (REST API), `ziprecruiter` (MCP), `greenhouse` (Greenhouse.io + Lever.co + Ashby + Workable + Recruitee public ATS APIs), `remotive` (Remotive + Himalayas + We Work Remotely remote-jobs boards, Canada-eligible), `research` (non-job-board: Wellfound, funded startups, niche boards, Canada boards like Job Bank).
-
-Parse the reply: split on commas, trim whitespace, lowercase, and keep only values matching the 7 known source names (ignore anything unrecognized). Compute `enabled_sources` as all 7 minus the parsed skip list.
-
-**Write the config file:**
-
-Run `bash -c 'echo $JOB_DATA_ROOT'` to get the data directory. Write `$JOB_DATA_ROOT/jobs/sources-config.json`:
-
-```json
-{"enabled": ["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]}
-```
-
-Replace the array with the actual `enabled_sources` list.
+To apply an override: run `harness-db sources enabled` to get the stored set, then
+split on commas / trim / lowercase the arg and subtract (`--skip`) or intersect
+(`--only`), and pass the resulting `enabled_sources` list to `job-seeker` in its
+spawn prompt. With no args, spawn `job-seeker` with no source override — it reads
+the DB itself.
 
 ## Steps 1–5
 
 > **`job-preparer` cannot prompt the user** — it runs as a subagent and its questions do not surface. **You** (the main agent running this skill) own every user decision. `job-preparer` runs in phases and returns control to you between them. Ask the user in **plain text** (no `AskUserQuestion`), matching the Step 0 style above.
 
-1. **Search.** Spawn the `job-seeker` agent (subagent_type: job-seeker). It reads `sources-config.json` to know which sources are active, searches those sources in parallel for remote, Canada-eligible senior roles, deduplicates against the SQLite DB, inserts new postings, and saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`. Wait for it to complete.
+1. **Search.** Spawn the `job-seeker` agent (subagent_type: job-seeker). It reads the enabled sources from the DB (`harness-db sources enabled`) — or uses the transient `enabled_sources` override if you computed one in Step 0 — searches those sources in parallel for remote, Canada-eligible senior roles, deduplicates against the SQLite DB, inserts new postings, and saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`. Wait for it to complete.
 
    **Present the detailed search report.** `job-seeker` returns a detailed report (also written to `job-data/jobs/search-report-YYYY-MM-DD.md`) with three sections: (1) every source and the number of positions found in each, (2) any content-fetch problems, and (3) any other execution issues. Show this report to the user verbatim before moving on to scoring — do not summarize it away. If the agent's reply did not include the report, read it from `$JOB_DATA_ROOT/jobs/search-report-YYYY-MM-DD.md` and present that.
 
