@@ -26,8 +26,5 @@ else
 fi
 set -x
 
-python -m venv venv
-. ./venv/bin/activate \
-    && pip install -U uv \
-    && uv pip install -r requirements.txt
+./scripts/python-init.sh
 
