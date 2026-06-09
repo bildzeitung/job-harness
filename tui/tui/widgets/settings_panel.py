@@ -53,8 +53,8 @@ class SettingsPanel(Widget):
 
     # Which sub-tab(s) each accelerator action applies to.
     _ACTION_SUBTABS = {
-        "settings_add": {"profile", "disq", "roles"},
-        "settings_delete": {"disq", "roles"},
+        "settings_add": {"profile", "disq", "scoring", "roles"},
+        "settings_delete": {"disq", "scoring", "roles"},
         "make_active": {"profile"},
         "toggle_active_flag": {"profile"},
         "save_config": {"config"},
@@ -122,6 +122,12 @@ class SettingsPanel(Widget):
         with Vertical():
             yield Static("Scoring modifiers — Enter toggles; '*' = custom.")
             yield DataTable(id="scoring-table", cursor_type="row", zebra_stripes=True)
+            with Horizontal(classes="settings-row"):
+                yield Input(placeholder="block name", id="scoring-name")
+                yield Input(placeholder="modifier (e.g. -20)", id="scoring-modifier")
+                yield Input(placeholder="examples (comma-separated)", id="scoring-examples")
+                yield Button("[u]A[/u]dd", id="add-scoring-btn", variant="primary")
+                yield Button("[u]D[/u]elete custom", id="del-scoring-btn", variant="error")
 
     def _compose_roles(self) -> ComposeResult:
         with Vertical():
@@ -320,14 +326,19 @@ class SettingsPanel(Widget):
         return self._active_subtab() in subtabs
 
     def action_settings_add(self) -> None:
-        {"profile": self._add_user, "disq": self._add_prefilter, "roles": self._add_role}.get(
-            self._active_subtab(), lambda: None
-        )()
+        {
+            "profile": self._add_user,
+            "disq": self._add_prefilter,
+            "scoring": self._add_scoring,
+            "roles": self._add_role,
+        }.get(self._active_subtab(), lambda: None)()
 
     def action_settings_delete(self) -> None:
-        {"disq": self._del_prefilter, "roles": self._del_role}.get(
-            self._active_subtab(), lambda: None
-        )()
+        {
+            "disq": self._del_prefilter,
+            "scoring": self._del_scoring,
+            "roles": self._del_role,
+        }.get(self._active_subtab(), lambda: None)()
 
     def action_make_active(self) -> None:
         self._use_user()
@@ -349,6 +360,8 @@ class SettingsPanel(Widget):
             "save-config-btn": self._save_config,
             "add-prefilter-btn": self._add_prefilter,
             "del-prefilter-btn": self._del_prefilter,
+            "add-scoring-btn": self._add_scoring,
+            "del-scoring-btn": self._del_scoring,
             "add-role-btn": self._add_role,
             "del-role-btn": self._del_role,
             "gen-roles-btn": self._generate_roles,
@@ -416,6 +429,38 @@ class SettingsPanel(Widget):
             self.notify(str(e), severity="error")
             return
         self._load_disq()
+
+    def _add_scoring(self) -> None:
+        name = self.query_one("#scoring-name", Input).value.strip()
+        raw_modifier = self.query_one("#scoring-modifier", Input).value.strip()
+        if not name or not raw_modifier:
+            return
+        try:
+            modifier = int(raw_modifier)
+        except ValueError:
+            self.notify("Modifier must be a whole number (e.g. -20).", severity="error")
+            return
+        examples = [
+            e.strip()
+            for e in self.query_one("#scoring-examples", Input).value.split(",")
+            if e.strip()
+        ]
+        disqualifiers.add_scoring_block(name, modifier, examples, self._uid)
+        for fid in ("#scoring-name", "#scoring-modifier", "#scoring-examples"):
+            self.query_one(fid, Input).value = ""
+        self._load_scoring()
+
+    def _del_scoring(self) -> None:
+        table = self.query_one("#scoring-table", DataTable)
+        if table.row_count == 0:
+            return
+        bid = int(table.coordinate_to_cell_key((table.cursor_row, 0)).row_key.value)
+        try:
+            disqualifiers.delete_scoring_block(bid, self._uid)
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+            return
+        self._load_scoring()
 
     def _add_role(self) -> None:
         kind = self.query_one("#role-kind", Select).value

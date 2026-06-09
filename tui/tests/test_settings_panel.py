@@ -169,3 +169,54 @@ def test_accelerators_inert_off_settings_tab(_isolate):
             assert users.get_user(panel._engine, "ghost") is None
 
     asyncio.run(scenario())
+
+
+def test_add_custom_scoring_block(_isolate):
+    """The Scoring sub-tab can add a custom modifier block (name + modifier)."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            await pilot.press("t")
+            await pilot.press("t")  # into settings
+            panel = app.query_one(SettingsPanel)
+            panel.query_one("#settings-tabs", TabbedContent).active = "scoring"
+            await pilot.pause()
+            panel.query_one("#scoring-name", Input).value = "Hates Mondays"
+            panel.query_one("#scoring-modifier", Input).value = "-15"
+            panel.query_one("#scoring-examples", Input).value = "ex one, ex two"
+            await pilot.pause()
+            await pilot.press("ctrl+a")
+            await pilot.pause()
+            blocks = {b.name: b for b in disqualifiers.list_scoring_blocks("default")}
+            assert "Hates Mondays" in blocks
+            added = blocks["Hates Mondays"]
+            assert added.modifier == -15
+            assert added.custom is True
+            assert added.examples == ["ex one", "ex two"]
+            # The input fields are cleared after a successful add.
+            assert panel.query_one("#scoring-name", Input).value == ""
+
+    asyncio.run(scenario())
+
+
+def test_add_scoring_block_rejects_non_integer_modifier(_isolate):
+    """A non-integer modifier is rejected and no block is created."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            await pilot.press("t")
+            await pilot.press("t")
+            panel = app.query_one(SettingsPanel)
+            panel.query_one("#settings-tabs", TabbedContent).active = "scoring"
+            await pilot.pause()
+            panel.query_one("#scoring-name", Input).value = "Bad"
+            panel.query_one("#scoring-modifier", Input).value = "minus twenty"
+            await pilot.pause()
+            await pilot.press("ctrl+a")
+            await pilot.pause()
+            names = {b.name for b in disqualifiers.list_scoring_blocks("default")}
+            assert "Bad" not in names
+
+    asyncio.run(scenario())
