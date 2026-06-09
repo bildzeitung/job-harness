@@ -67,9 +67,13 @@ class JobViewerApp(App):
 
     def action_switch_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        if tabs.active == "jobs":
-            tabs.active = "companies"
-            self.query_one(CompanyPanel).focus_table()
-        else:
-            tabs.active = "jobs"
+        order = ["jobs", "companies", "settings"]
+        try:
+            nxt = order[(order.index(tabs.active) + 1) % len(order)]
+        except ValueError:
+            nxt = "jobs"
+        tabs.active = nxt
+        if nxt == "jobs":
             self.query_one(JobsPanel).focus_table()
+        elif nxt == "companies":
+            self.query_one(CompanyPanel).focus_table()

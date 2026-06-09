@@ -57,3 +57,21 @@ def test_toggling_source_row_persists(_isolate):
             assert before != after
 
     asyncio.run(scenario())
+
+
+def test_switch_tab_cycles_through_settings(_isolate):
+    """Pressing 't' must reach the Settings tab, not just toggle jobs/companies."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            tabs = app.query_one("#tabs")
+            assert tabs.active == "jobs"
+            await pilot.press("t")
+            assert tabs.active == "companies"
+            await pilot.press("t")
+            assert tabs.active == "settings"
+            await pilot.press("t")
+            assert tabs.active == "jobs"
+
+    asyncio.run(scenario())
