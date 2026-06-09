@@ -9,7 +9,7 @@ import asyncio
 
 import pytest
 from harness_db import config_store, disqualifiers, sources_store, users
-from textual.widgets import DataTable, Input, TabbedContent
+from textual.widgets import DataTable, Input, TabbedContent, TabPane
 
 from tui.app import JobViewerApp
 from tui.widgets import SettingsPanel
@@ -34,6 +34,29 @@ def test_settings_panel_mounts_and_loads(_isolate):
             await pilot.pause()
             panel = app.query_one(SettingsPanel)
             assert panel.query_one("#sources-table", DataTable).row_count == 7
+
+    asyncio.run(scenario())
+
+
+def test_scoring_modifiers_have_their_own_subtab(_isolate):
+    """Scoring modifiers must live in the 'scoring' sub-tab, not under 'disq'."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            await pilot.press("t")
+            await pilot.press("t")  # jobs -> companies -> settings
+            panel = app.query_one(SettingsPanel)
+            scoring_pane = panel.query_one("#scoring", TabPane)
+            disq_pane = panel.query_one("#disq", TabPane)
+            # The scoring table belongs to the scoring pane only, not disq.
+            assert scoring_pane.query("#scoring-table")
+            assert not disq_pane.query("#scoring-table")
+            # Switching to it pulls focus onto the (populated) scoring table.
+            panel.query_one("#settings-tabs", TabbedContent).active = "scoring"
+            await pilot.pause()
+            assert app.focused is not None
+            assert app.focused.id == "scoring-table"
 
     asyncio.run(scenario())
 

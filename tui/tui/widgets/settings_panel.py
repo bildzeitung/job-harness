@@ -78,6 +78,8 @@ class SettingsPanel(Widget):
                 yield from self._compose_sources()
             with TabPane("Disqualifiers", id="disq"):
                 yield from self._compose_disq()
+            with TabPane("Scoring", id="scoring"):
+                yield from self._compose_scoring()
             with TabPane("Target Roles", id="roles"):
                 yield from self._compose_roles()
 
@@ -115,6 +117,9 @@ class SettingsPanel(Widget):
                 yield Input(placeholder="keyword / phrase", id="prefilter-value")
                 yield Button("[u]A[/u]dd", id="add-prefilter-btn", variant="primary")
                 yield Button("[u]D[/u]elete custom", id="del-prefilter-btn", variant="error")
+
+    def _compose_scoring(self) -> ComposeResult:
+        with Vertical():
             yield Static("Scoring modifiers — Enter toggles; '*' = custom.")
             yield DataTable(id="scoring-table", cursor_type="row", zebra_stripes=True)
 
@@ -143,6 +148,7 @@ class SettingsPanel(Widget):
         self._load_config()
         self._load_sources()
         self._load_disq()
+        self._load_scoring()
         self._load_roles()
 
     # --- keyboard focus ------------------------------------------------------
@@ -153,6 +159,7 @@ class SettingsPanel(Widget):
         "profile": "#users-table",
         "sources": "#sources-table",
         "disq": "#prefilter-table",
+        "scoring": "#scoring-table",
         "roles": "#roles-table",
     }
 
@@ -247,6 +254,9 @@ class SettingsPanel(Widget):
             value = f"{r.value} *" if r.custom else r.value
             pt.add_row(_glyph(r.enabled), r.category, value, key=str(r.id))
 
+    # --- scoring modifiers ---------------------------------------------------
+
+    def _load_scoring(self) -> None:
         st = self.query_one("#scoring-table", DataTable)
         st.clear(columns=True)
         st.add_column("On", width=4)
@@ -284,7 +294,7 @@ class SettingsPanel(Widget):
         elif tid == "scoring-table":
             cur = {b.id: b.enabled for b in disqualifiers.list_scoring_blocks(self._uid)}
             disqualifiers.set_scoring_enabled(int(key), not cur.get(int(key), True), self._uid)
-            self._load_disq()
+            self._load_scoring()
         elif tid == "roles-table":
             cur = {i.id: i.enabled for i in target_roles.list_target_roles(self._uid)}
             target_roles.set_enabled(int(key), not cur.get(int(key), True), self._uid)
