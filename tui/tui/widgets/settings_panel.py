@@ -12,6 +12,7 @@ from harness_db.disqualifiers import PREFILTER_CATEGORIES
 from harness_db.seed import ensure_schema_and_seed
 from harness_db.target_roles import KINDS
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widget import Widget
 from textual.widgets import (
@@ -32,6 +33,33 @@ def _glyph(enabled: bool) -> str:
 
 class SettingsPanel(Widget):
     """Container of settings sub-tabs, all backed by the harness DB."""
+
+    # Accelerators for the action buttons. priority=True lets them win over a
+    # focused Input (which would otherwise eat e.g. ctrl+a for line editing), so
+    # you can type in a field and fire the button without tabbing away. They are
+    # always live on this (always-composed) panel, so check_action() gates them:
+    # active only while Settings is the visible tab and the relevant sub-tab is
+    # current. "Add"/"Delete" are context-aware — they dispatch to whichever
+    # sub-tab is active. show=False keeps the footer uncluttered; the underlined
+    # letter in each button label advertises the key instead.
+    BINDINGS = [
+        Binding("ctrl+a", "settings_add", "Add", show=False, priority=True),
+        Binding("ctrl+d", "settings_delete", "Delete custom", show=False, priority=True),
+        Binding("ctrl+k", "make_active", "Make active", show=False, priority=True),
+        Binding("ctrl+t", "toggle_active_flag", "Toggle active flag", show=False, priority=True),
+        Binding("ctrl+s", "save_config", "Save config", show=False, priority=True),
+        Binding("ctrl+g", "generate_roles", "Generate target-roles.md", show=False, priority=True),
+    ]
+
+    # Which sub-tab(s) each accelerator action applies to.
+    _ACTION_SUBTABS = {
+        "settings_add": {"profile", "disq", "roles"},
+        "settings_delete": {"disq", "roles"},
+        "make_active": {"profile"},
+        "toggle_active_flag": {"profile"},
+        "save_config": {"config"},
+        "generate_roles": {"roles"},
+    }
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -59,15 +87,15 @@ class SettingsPanel(Widget):
             yield DataTable(id="users-table", cursor_type="row", zebra_stripes=True)
             with Horizontal(classes="settings-row"):
                 yield Input(placeholder="new user id", id="new-user-input")
-                yield Button("Add user", id="add-user-btn", variant="primary")
-                yield Button("Make active", id="use-user-btn")
-                yield Button("Toggle active flag", id="toggle-user-btn")
+                yield Button("[u]A[/u]dd user", id="add-user-btn", variant="primary")
+                yield Button("Ma[u]k[/u]e active", id="use-user-btn")
+                yield Button("[u]T[/u]oggle active flag", id="toggle-user-btn")
 
     def _compose_config(self) -> ComposeResult:
         with VerticalScroll():
             yield Static("Per-user config (blank inherits the env/settings fallback):")
             yield Vertical(id="config-fields")
-            yield Button("Save config", id="save-config-btn", variant="primary")
+            yield Button("[u]S[/u]ave config", id="save-config-btn", variant="primary")
 
     def _compose_sources(self) -> ComposeResult:
         with Vertical():
@@ -85,8 +113,8 @@ class SettingsPanel(Widget):
                     prompt="category",
                 )
                 yield Input(placeholder="keyword / phrase", id="prefilter-value")
-                yield Button("Add", id="add-prefilter-btn", variant="primary")
-                yield Button("Delete custom", id="del-prefilter-btn", variant="error")
+                yield Button("[u]A[/u]dd", id="add-prefilter-btn", variant="primary")
+                yield Button("[u]D[/u]elete custom", id="del-prefilter-btn", variant="error")
             yield Static("Scoring modifiers — Enter toggles; '*' = custom.")
             yield DataTable(id="scoring-table", cursor_type="row", zebra_stripes=True)
 
@@ -97,9 +125,11 @@ class SettingsPanel(Widget):
             with Horizontal(classes="settings-row"):
                 yield Select([(k, k) for k in KINDS], id="role-kind", prompt="kind")
                 yield Input(placeholder="title / keyword / domain", id="role-value")
-                yield Button("Add", id="add-role-btn", variant="primary")
-                yield Button("Delete custom", id="del-role-btn", variant="error")
-                yield Button("Generate target-roles.md", id="gen-roles-btn", variant="success")
+                yield Button("[u]A[/u]dd", id="add-role-btn", variant="primary")
+                yield Button("[u]D[/u]elete custom", id="del-role-btn", variant="error")
+                yield Button(
+                    "[u]G[/u]enerate target-roles.md", id="gen-roles-btn", variant="success"
+                )
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -114,6 +144,54 @@ class SettingsPanel(Widget):
         self._load_sources()
         self._load_disq()
         self._load_roles()
+
+    # --- keyboard focus ------------------------------------------------------
+
+    # First control to land on for each sub-tab (config is handled separately
+    # because its inputs are mounted dynamically).
+    _SUBTAB_FOCUS = {
+        "profile": "#users-table",
+        "sources": "#sources-table",
+        "disq": "#prefilter-table",
+        "roles": "#roles-table",
+    }
+
+    def focus_first(self) -> None:
+        """Move keyboard focus into the active sub-tab's first control.
+
+        Called when the Settings tab is opened so the user lands on a real
+        control (Textual otherwise leaves focus at ``None`` here) and can
+        immediately use arrows / Tab / the button accelerators.
+        """
+        self._focus_active_subtab()
+
+    def _focus_active_subtab(self) -> None:
+        active = self.query_one("#settings-tabs", TabbedContent).active
+        target: Widget | None = None
+        if active == "config":
+            inputs = self.query("#config-fields Input")
+            target = inputs.first() if inputs else self.query_one("#save-config-btn", Button)
+        elif active in self._SUBTAB_FOCUS:
+            target = self.query_one(self._SUBTAB_FOCUS[active], DataTable)
+        if target is not None:
+            target.focus()
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        """Follow the user into a newly selected sub-tab's controls.
+
+        Only the inner (#settings-tabs) switcher is handled, and only while the
+        Settings tab is the visible outer tab — otherwise the initial activation
+        during compose would steal focus from the Jobs table at startup.
+        """
+        if event.tabbed_content is not self.query_one("#settings-tabs", TabbedContent):
+            return
+        try:
+            if self.app.query_one("#tabs", TabbedContent).active != "settings":
+                return
+        except Exception:
+            return
+        self._focus_active_subtab()
+        event.stop()
 
     # --- profile -------------------------------------------------------------
 
@@ -212,6 +290,46 @@ class SettingsPanel(Widget):
             target_roles.set_enabled(int(key), not cur.get(int(key), True), self._uid)
             self._load_roles()
         event.stop()
+
+    # --- keyboard accelerators (see BINDINGS) --------------------------------
+
+    def _active_subtab(self) -> str:
+        return self.query_one("#settings-tabs", TabbedContent).active
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        """Enable an accelerator only when Settings is visible and its sub-tab
+        is current; otherwise the key falls through to the focused widget."""
+        subtabs = self._ACTION_SUBTABS.get(action)
+        if subtabs is None:
+            return True
+        try:
+            if self.app.query_one("#tabs", TabbedContent).active != "settings":
+                return False
+        except Exception:
+            return False
+        return self._active_subtab() in subtabs
+
+    def action_settings_add(self) -> None:
+        {"profile": self._add_user, "disq": self._add_prefilter, "roles": self._add_role}.get(
+            self._active_subtab(), lambda: None
+        )()
+
+    def action_settings_delete(self) -> None:
+        {"disq": self._del_prefilter, "roles": self._del_role}.get(
+            self._active_subtab(), lambda: None
+        )()
+
+    def action_make_active(self) -> None:
+        self._use_user()
+
+    def action_toggle_active_flag(self) -> None:
+        self._toggle_user()
+
+    def action_save_config(self) -> None:
+        self._save_config()
+
+    def action_generate_roles(self) -> None:
+        self._generate_roles()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         handler = {

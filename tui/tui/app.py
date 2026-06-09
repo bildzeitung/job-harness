@@ -77,3 +77,5 @@ class JobViewerApp(App):
             self.query_one(JobsPanel).focus_table()
         elif nxt == "companies":
             self.query_one(CompanyPanel).focus_table()
+        elif nxt == "settings":
+            self.query_one(SettingsPanel).focus_first()
