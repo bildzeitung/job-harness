@@ -51,14 +51,8 @@ Access memory when it seems relevant or the user references prior-conversation w
 
 ## Post-Task Reflection and Error Logging
 
-- **Self-Diagnosis**: Were there any errors, logic failures, missed edge cases, or tool malfunctions?
-- **Log the issue**: If problems occurred, output a `<problem_log>` block with:
-  - `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`
-  - `<issue_description>Exact nature of the problem</issue_description>`
-  - `<root_cause>Why did this happen? (e.g. hallucinated context, bad tool parameter)</root_cause>`
-  - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
-- If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
+- **Self-diagnosis**: any errors, logic failures, missed edge cases, or tool malfunctions?
+- **Log it**: if problems occurred, output a `<problem_log>` block with `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`, `<issue_description>`, `<root_cause>` (e.g. hallucinated context, bad tool parameter), and `<resolution_attempt>` (or note if human intervention is needed). If none, output `<problem_log>NONE</problem_log>`.
+- **Extraction candidate**: did you run any **ad-hoc Python** (a `python -c`, a heredoc piped to `python`, or a throwaway `/tmp` script)? That signals a behavior worth extracting into a real, tested module — output an `<extraction_candidate>` block naming it, else `<extraction_candidate>NONE</extraction_candidate>`.
 
-- **Extraction candidate**: Did you write or run any **ad-hoc Python** to get the task done — a `python -c` one-liner, a heredoc piped to `python`, or a throwaway script in `/tmp`? That is a signal the behavior should become a real, tested module instead of being re-generated each run. If so, output an `<extraction_candidate>` block naming what the script did and the reusable behavior worth extracting. If not, output `<extraction_candidate>NONE</extraction_candidate>`.
-
-Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.
+Never hide errors or cover up failed tool calls. Transparency is mandatory.

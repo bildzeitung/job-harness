@@ -12,11 +12,11 @@ You coordinate the platform searchers enabled in the DB sources catalog to searc
 
 ## Environment
 
-Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory. Use this value wherever `$JOB_DATA_ROOT` appears in these instructions.
+Run `bash -c 'echo $JOB_DATA_ROOT'` for the job data root; use it wherever `$JOB_DATA_ROOT` appears below.
 
 ## Step 0: Generate Candidate Summary
 
-Generate `$JOB_DATA_ROOT/candidate-summary.json` so every searcher reads one compact profile. It is assembled **deterministically** from the resume, the DB target-roles, and the candidate config keys — there is no synthesis to get wrong:
+Generate `$JOB_DATA_ROOT/candidate-summary.json` (the compact profile every searcher reads), assembled **deterministically** from the resume, DB target-roles, and candidate config keys — no synthesis:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
@@ -24,140 +24,79 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 harness-db candidate-summary --write
 ```
 
-This rewrites the file only when its inputs change (resume, target roles, or config), so re-running is cheap. The same command seeds/creates the DB schema, so no separate table-creation step is needed. Positive targets live in the DB target-roles; hard exclusions live in the DB disqualifiers — neither belongs in this file.
+It rewrites only when its inputs change, and also seeds/creates the DB schema (no separate table-creation step). Exclusions and positive targets live in the DB, not in this file.
 
 ## Step 0c: Load Sources Configuration
 
-Source selection is **data-driven**: it lives per-user in the harness DB (managed
-from the TUI/web Settings, not a config file). Read the enabled set from the DB:
+Read the enabled sources from the DB (config is data-driven and per-user — see
+`docs/design-notes.md`):
 
 ```bash
 harness-db sources enabled
 ```
 
-This prints `{"enabled": [...]}`. Parse the `enabled` array and store it as
-`enabled_sources`. (This command also runs the one-time migration that imports any
-legacy `sources-config.json` into the DB on first use.)
+Parse the printed `{"enabled": [...]}` array into `enabled_sources`. If the
+caller passed an explicit `enabled_sources` list in the spawn prompt (a transient
+`--skip`/`--only` override), use that instead. If the command fails, default to
+all sources enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
 
-If the caller passed an explicit `enabled_sources` list in the spawn prompt (a
-transient `--skip`/`--only` override from the job-search skill), use that list
-instead of querying the DB.
+The `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever,
+Ashby, Workable, Recruitee); the `remotive` source runs three remote-jobs boards
+(Remotive, Himalayas, We Work Remotely). Any source not in `enabled_sources` is
+**disabled**: skip its probe in Step 1 and do not spawn it in Step 2.
 
-If the command fails for any reason, default to all sources enabled — `["linkedin", "indeed", "adzuna", "ziprecruiter", "greenhouse", "remotive", "research"]`.
-
-Note: the `greenhouse` source runs five ATS APIs in one agent (Greenhouse, Lever, Ashby, Workable, and Recruitee); the `remotive` source runs three remote-jobs boards in one agent (Remotive, Himalayas, and We Work Remotely).
-
-Any source not in `enabled_sources` is **disabled**: skip its MCP probe in Step 1 and do not spawn its sub-agent in Step 2.
-
-## Step 0d: Disqualifiers (data-driven)
-
-The pipeline's hard disqualifiers (pre-filter keywords and scoring modifiers) are
-**data-driven and per-user** — they live in the harness DB and the user manages
-them from the TUI/web Settings. Every consumer (`api_search`, `job-preparer`, the
-scorer) reads them from the DB via `harness_db.disqualifiers`; the searchers do
-not read or apply them. No setup is needed here: the schema seed in Step 0c
-(`harness-db sources enabled`) also seeds the built-in disqualifiers.
-
-## Step 0e: Target-Roles Config (read from the DB)
-
-The candidate's positive search inputs — target role titles, title keywords, and
-domains of interest — are **data-driven and per-user**, stored in the harness DB
-and managed from the TUI/web Settings → Target Roles panel. There is no file to
-generate: Step 0 reads them on demand straight from the DB with
-
-```bash
-harness-db target-roles show
-```
-
-which renders the user's current selection from the DB (the source of truth).
-The command seeds the built-in catalog and imports any legacy `target-roles.md`
-on first run, so an existing install migrates seamlessly.
+Disqualifiers and target roles are likewise data-driven in the DB — searchers do
+not read or apply them, and the seed above also seeds the built-in disqualifiers.
 
 ## Step 1: **MANDATORY** Live MCP Connectivity Check
 
-Before spawning any agents, probe each session-dependent MCP server using the **actual tools sub-agents will call** — not proxy endpoints. A tool appearing in ToolSearch is not enough (Docker-based MCPs can be schema-registered but disconnected). LinkedIn can be partially functional: profile endpoints may respond while job search endpoints do not. Probing a proxy endpoint masks this failure and causes sub-agents to produce 0 results.
+Before spawning any agents, probe each session-dependent MCP server using the
+**actual tools sub-agents will call**, not proxy endpoints (a tool appearing in
+ToolSearch is not enough — see `docs/design-notes.md` for why this is mandatory).
 
-Execute the following checklist. Skip any item whose source is not in `enabled_sources` — mark it as **disabled** in the results table.
+Run each probe below. **Skip** any whose source is not in `enabled_sources` (mark **disabled**). Each probe discards its results — it is a connectivity test only; success → **available**, failure → **unavailable**. First load the LinkedIn tool: ToolSearch `query: "select:mcp__linkedin__search_jobs"`.
 
-Use ToolSearch to load the LinkedIn search tool into this session: `query: "select:mcp__linkedin__search_jobs"`
+- [ ] **LinkedIn:** if ToolSearch did **not** return `mcp__linkedin__search_jobs`, mark **unavailable** immediately. Otherwise call it with `keywords: "principal engineer"`.
+- [ ] **Indeed:** call `mcp__claude_ai_Indeed__search_jobs` with `search: "engineer", country_code: "CA", location: "remote"`.
+- [ ] **ZipRecruiter:** call `mcp__claude_ai_ZipRecruiter__search_jobs` with `query: "engineer", location_types: ["REMOTE"]`.
 
-- [ ] **LinkedIn probe:** Skip if `linkedin` not in `enabled_sources` (mark **disabled**). If `mcp__linkedin__search_jobs` was **not returned** by ToolSearch, mark LinkedIn as **unavailable** immediately (the tool is not registered in this session). Otherwise call `mcp__linkedin__search_jobs` with a minimal test query (e.g. `keywords: "principal engineer"`) and discard results. ToolSearch returned the schema AND call succeeds → mark LinkedIn as **available**. Otherwise, mark LinkedIn as **unavailable**
-
-- [ ] **Indeed probe:** Skip if `indeed` not in `enabled_sources` (mark **disabled**). Call `mcp__claude_ai_Indeed__search_jobs` with `search: "engineer", country_code: "CA", location: "remote"`. Discard the results — connectivity test only. Success → mark Indeed as **available**. Otherwise mark Indeed as **unavailable**.
-
-- [ ] **ZipRecruiter probe:** Skip if `ziprecruiter` not in `enabled_sources` (mark **disabled**). Call `mcp__claude_ai_ZipRecruiter__search_jobs` with `query: "engineer", location_types: ["REMOTE"]`. Discard the results — connectivity test only. Success → mark ZipRecruiter as **available**. Otherwise mark ZipRecruiter as **unavailable**.
-
-Print the results of this checklist in a table. Stop the pipeline if any items are marked **unavailable** (disabled sources do not count as unavailable).
+Print the results of this checklist in a table. Stop the pipeline if any items are marked **unavailable** (disabled sources do not count as unavailable). This hard stop is deliberate (spec 14): a partial run silently missing a major source is worse than a failed run — do not soften it to degrade-and-continue.
 
 ## Step 2: Spawn Platform Searchers in Parallel
 
-In a single message, spawn all eligible sub-agents at the same time using the Agent tool.
+In a single message, spawn every eligible searcher at once via the Agent tool (`subagent_type: job-seeker-{source}`).
 
-No-MCP sources — spawn only if in `enabled_sources`:
-- `subagent_type: job-seeker-adzuna` — if `adzuna` in `enabled_sources`
-- `subagent_type: job-seeker-greenhouse` — if `greenhouse` in `enabled_sources` (runs Greenhouse + Lever + Ashby + Workable + Recruitee)
-- `subagent_type: job-seeker-remotive` — if `remotive` in `enabled_sources` (runs Remotive + Himalayas + We Work Remotely)
-- `subagent_type: job-seeker-research` — if `research` in `enabled_sources`
-
-MCP-dependent sources — spawn only if in `enabled_sources` **and** the probe succeeded:
-- `subagent_type: job-seeker-linkedin` — if `linkedin` in `enabled_sources` and LinkedIn probe succeeded
-- `subagent_type: job-seeker-indeed` — if `indeed` in `enabled_sources` and Indeed probe succeeded
-- `subagent_type: job-seeker-ziprecruiter` — if `ziprecruiter` in `enabled_sources` and ZipRecruiter probe succeeded
+- **No-MCP sources** — spawn if in `enabled_sources`: `adzuna`, `greenhouse`, `remotive`, `research`.
+- **MCP sources** — spawn if in `enabled_sources` **and** the Step 1 probe succeeded: `linkedin`, `indeed`, `ziprecruiter`.
 
 ### Fallback when the Agent tool is unavailable
 
-You may be running as a sub-agent yourself (e.g. spawned by the `job-search` skill). In that case the **Agent tool can be unavailable** and any `Agent` call fails with *"Agent tool unavailable in sub-agent session"*. **Do not report a source as `0` because of this** — recover every source inline:
+If you are yourself a sub-agent, the `Agent` tool may be unavailable and a spawn fails with *"Agent tool unavailable in sub-agent session"*. **Do not report a source as `0`** — recover every enabled source inline (rationale in `docs/design-notes.md`). Decide once, up front: attempt a single `Agent` spawn; if it hits that error, switch to the inline path for **all** enabled sources for the rest of the run.
 
-- **adzuna / greenhouse / remotive / research-via-API** are deterministic: run them yourself via Bash instead of spawning their sub-agents:
+- **adzuna / greenhouse / remotive** are deterministic — run their `api_search` modules yourself:
   ```bash
   PROJECT_ROOT=$(git rev-parse --show-toplevel)
   . "$PROJECT_ROOT/venv/bin/activate"
-  python -m api_search adzuna      # writes adzuna-{date}.json
-  python -m api_search greenhouse  # writes greenhouse-{date}.json
-  python -m api_search lever       # writes lever-{date}.json
-  python -m api_search ashby       # writes ashby-{date}.json
-  python -m api_search workable    # writes workable-{date}.json
-  python -m api_search recruitee   # writes recruitee-{date}.json
-  python -m api_search remotive    # writes remotive-{date}.json
-  python -m api_search himalayas   # writes himalayas-{date}.json
-  python -m api_search wwr         # writes wwr-{date}.json
+  python -m api_search adzuna
+  for s in greenhouse lever ashby workable recruitee remotive himalayas wwr; do python -m api_search "$s"; done
   ```
-- **linkedin / indeed / ziprecruiter** — call their MCP tools directly (they are in your own tool list) and write the `{platform}-{date}.json` files yourself in the consolidator schema.
-- **research** has no deterministic module — it needs reasoning over web results. Run it **inline using your own `WebSearch` and `WebFetch` tools**, following the search strategy and NON-NEGOTIABLE requirements in the `job-seeker-research` agent definition (recently funded companies, Wellfound/Ashby/niche boards, FHIR-specific roles; remote + Canada-eligible + senior only). Write the results to `$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.json` in the same consolidator-ready posting schema the other sources use (`platform: "research"`, with `title`, `company`, `url`, `post_date`, `applicant_count`, `employment_type`, `location_note`, `description_summary`), exactly as the `job-seeker-research` sub-agent would.
+- **linkedin / indeed / ziprecruiter** — call their MCP tools directly (they are in your own tool list) and write each `{platform}-{date}.json` in the consolidator schema yourself.
+- **research** has no module — run it inline with your own `WebSearch`/`WebFetch`, following the `job-seeker-research` agent's search strategy and requirements, and write `research-{YYYY-MM-DD}.json` in the consolidator schema (`platform: "research"`).
 
-Decide once, up front: attempt a single `Agent` spawn; if it fails with the sub-agent-session error, switch to the inline path above for **all** enabled sources for the rest of this run. Never silently emit `0 (Agent tool unavailable in sub-agent session)` for any source.
-
-Each agent writes its own temp file (the `job-seeker-greenhouse` agent writes five — one per ATS):
-- `job-data/jobs/linkedin-{YYYY-MM-DD}.json` (if spawned)
-- `job-data/jobs/indeed-{YYYY-MM-DD}.json`
-- `job-data/jobs/adzuna-{YYYY-MM-DD}.json`
-- `job-data/jobs/ziprecruiter-{YYYY-MM-DD}.json`
-- `job-data/jobs/greenhouse-{YYYY-MM-DD}.json`
-- `job-data/jobs/lever-{YYYY-MM-DD}.json` (also from the greenhouse agent)
-- `job-data/jobs/ashby-{YYYY-MM-DD}.json` (also from the greenhouse agent)
-- `job-data/jobs/workable-{YYYY-MM-DD}.json` (also from the greenhouse agent)
-- `job-data/jobs/recruitee-{YYYY-MM-DD}.json` (also from the greenhouse agent)
-- `job-data/jobs/remotive-{YYYY-MM-DD}.json`
-- `job-data/jobs/himalayas-{YYYY-MM-DD}.json` (also from the remotive agent)
-- `job-data/jobs/wwr-{YYYY-MM-DD}.json` (also from the remotive agent)
-- `job-data/jobs/research-{YYYY-MM-DD}.json`
-
-Wait for all spawned agents to complete before proceeding.
+Each searcher writes its own `$JOB_DATA_ROOT/jobs/{platform}-{YYYY-MM-DD}.json` (the greenhouse agent writes five — greenhouse/lever/ashby/workable/recruitee; the remotive agent writes three — remotive/himalayas/wwr). Wait for all spawned agents to complete before proceeding.
 
 ### Capture each searcher's outcome for the report
 
-As each sub-agent (or inline-fallback source) finishes, record three things from its returned final message — you will need them for the detailed report in Step 4:
-1. **Count** — the number of postings it reported finding (its `[API-SEARCH:…] Found N` / `Found N postings` line, or the `total_found` in the file it wrote).
-2. **Content-fetch problems** — anything in its `<problem_log>` block, plus any explicit mention of failed/blocked HTTP fetches, rate limits, empty API responses, auth failures, timeouts, or pages it could not retrieve.
-3. **Execution issues** — sub-agent crashes, the *"Agent tool unavailable in sub-agent session"* fallback being triggered, partial completion, or a source that returned nothing because it was disabled/unavailable.
+As each source finishes, record three things from its final message for the Step 4 report:
+1. **Count** — postings found (its `Found N` line or the file's `total_found`).
+2. **Content-fetch problems** — its `<problem_log>`, plus any failed/blocked fetches, rate limits, empty/error API responses, auth failures, timeouts.
+3. **Execution issues** — crashes, the inline-fallback being triggered, partial completion, or a disabled/unavailable source.
 
-Keep this as a per-source running tally. A source that wrote no file or returned `0` is recorded as `0` with the reason (disabled, probe failed, fetch error, or genuinely no matches) — never drop a source silently.
+Keep a per-source running tally. A source that returned `0` is recorded as `0` with the reason — never drop a source silently.
 
 ## Step 3: Consolidate
 
-Once every spawned sub-agent has completed, run the `consolidate_module` script. It reads each platform's `{platform}-{YYYY-MM-DD}.json` from `$JOB_DATA_ROOT/jobs/` (missing files are treated as zero results), queries existing URLs from the DB, deduplicates against the DB **and** within the batch, writes the audit log `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.json`, and inserts new rows into `companies` → `postings` → `company_postings` in a single transaction.
-
-Run it from the harness venv with today's date:
+Once every spawned source has completed, run `consolidate_module`. It reads each `{platform}-{YYYY-MM-DD}.json` (missing files = zero), dedups against the DB and within the batch, writes the audit log `$JOB_DATA_ROOT/jobs/search-{YYYY-MM-DD}.json`, and inserts new `companies` → `postings` → `company_postings` rows in one transaction. Run it from the venv with today's date:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
@@ -165,17 +104,11 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 python -m consolidate_module --date $(date +%F)
 ```
 
-The script handles all SQL — there are no further `INSERT` calls for this step. Empty/unknown company values are skipped for the company and link rows (matching prior behavior); existing company rows are preserved (`ON CONFLICT DO NOTHING`), so enrichment written by sub-agents like `job-seeker-adzuna` (e.g. `canada_confirmed = 1`) is not clobbered.
-
-The script's stdout includes per-platform counts, removed-as-existing, removed-as-within-batch, total inserted, and the audit-log path. Forward that output into your Step 4 report.
+The script handles all SQL; existing company rows are preserved (`ON CONFLICT DO NOTHING`), so searcher-written enrichment is not clobbered. Its stdout includes per-platform counts, removed-as-existing/within-batch/semantic, total inserted, and the audit-log path — forward that into your Step 4 report.
 
 ## Step 4: Detailed Report
 
-Produce a **detailed search report** so the caller (the `job-search` skill) can present it to the user. Write it to a file **and** print it.
-
-Combine three inputs: (a) the Step 1 MCP probe table, (b) the per-source outcomes you captured in Step 2, and (c) the consolidation summary printed by `consolidate_module` in Step 3.
-
-Write the report to `$JOB_DATA_ROOT/jobs/search-report-{YYYY-MM-DD}.md` (use today's date), using this structure exactly:
+Produce a **detailed search report** so the caller can present it to the user — combine (a) the Step 1 probe table, (b) the per-source outcomes from Step 2, and (c) the Step 3 consolidation summary. Write it to `$JOB_DATA_ROOT/jobs/search-report-{YYYY-MM-DD}.md` **and** print it, using this structure exactly:
 
 ```markdown
 # Job Search Report — {YYYY-MM-DD}
@@ -226,14 +159,8 @@ After writing the file, print to your final message:
 
 ## Post-Task Reflection and Error Logging
 
-- **Self-Diagnosis**: Were there any errors, logic failures, missed edge cases, or tool malfunctions?
-- **Log the issue**: If problems occurred, output a `<problem_log>` block with:
-  - `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`
-  - `<issue_description>Exact nature of the problem</issue_description>`
-  - `<root_cause>Why did this happen? (e.g. hallucinated context, bad tool parameter)</root_cause>`
-  - `<resolution_attempt>What did you do to correct it? (Or note if human intervention is needed)</resolution_attempt>`
-- If no problems occurred, simply output `<problem_log>NONE</problem_log>`.
+- **Self-diagnosis**: any errors, logic failures, missed edge cases, or tool malfunctions?
+- **Log it**: if problems occurred, output a `<problem_log>` block with `<timestamp>YYYY-MM-DD HH:MM:SS</timestamp>`, `<issue_description>`, `<root_cause>` (e.g. hallucinated context, bad tool parameter), and `<resolution_attempt>` (or note if human intervention is needed). If none, output `<problem_log>NONE</problem_log>`.
+- **Extraction candidate**: did you run any **ad-hoc Python** (a `python -c`, a heredoc piped to `python`, or a throwaway `/tmp` script)? That signals a behavior worth extracting into a real, tested module — output an `<extraction_candidate>` block naming it, else `<extraction_candidate>NONE</extraction_candidate>`.
 
-- **Extraction candidate**: Did you write or run any **ad-hoc Python** to get the task done — a `python -c` one-liner, a heredoc piped to `python`, or a throwaway script in `/tmp`? That is a signal the behavior should become a real, tested module instead of being re-generated each run. If so, output an `<extraction_candidate>` block naming what the script did and the reusable behavior worth extracting. If not, output `<extraction_candidate>NONE</extraction_candidate>`.
-
-Never hide errors or attempt to cover up failed tool calls. Transparency is mandatory.
+Never hide errors or cover up failed tool calls. Transparency is mandatory.
