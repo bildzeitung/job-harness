@@ -11,6 +11,7 @@ from harness_db.config import get_active_uid, set_active_uid
 from harness_db.disqualifiers import PREFILTER_CATEGORIES
 from harness_db.seed import ensure_schema_and_seed
 from harness_db.target_roles import KINDS
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -24,6 +25,7 @@ from textual.widgets import (
     Static,
     TabbedContent,
     TabPane,
+    Tabs,
 )
 
 
@@ -165,13 +167,32 @@ class SettingsPanel(Widget):
     }
 
     def focus_first(self) -> None:
-        """Move keyboard focus into the active sub-tab's first control.
+        """Land keyboard focus on the sub-tab header bar.
 
-        Called when the Settings tab is opened so the user lands on a real
-        control (Textual otherwise leaves focus at ``None`` here) and can
-        immediately use arrows / Tab / the button accelerators.
+        Called when the Settings tab is opened (Textual otherwise leaves focus
+        at ``None`` here). From the header, left/right arrows switch sub-tabs
+        directly and Enter descends into the active sub-tab's first control
+        (see ``on_key``) — so the user can flip between Profile/Config/… without
+        having to Shift+Tab out of a control first.
         """
-        self._focus_active_subtab()
+        self._tabs_header().focus()
+
+    def _tabs_header(self) -> Tabs:
+        """The header tab-bar of the inner ``#settings-tabs`` switcher."""
+        return self.query_one("#settings-tabs", TabbedContent).query_one(Tabs)
+
+    def on_key(self, event: events.Key) -> None:
+        """Enter on the sub-tab header descends into that sub-tab's controls.
+
+        Left/right navigation between sub-tabs is handled natively by the
+        focused header ``Tabs`` widget; we only add the Enter-to-descend step so
+        focus stays on the header while arrowing and only moves into the body on
+        an explicit Enter.
+        """
+        if event.key == "enter" and self.app.focused is self._tabs_header():
+            self._focus_active_subtab()
+            event.stop()
+            event.prevent_default()
 
     def _focus_active_subtab(self) -> None:
         active = self.query_one("#settings-tabs", TabbedContent).active
@@ -183,23 +204,6 @@ class SettingsPanel(Widget):
             target = self.query_one(self._SUBTAB_FOCUS[active], DataTable)
         if target is not None:
             target.focus()
-
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        """Follow the user into a newly selected sub-tab's controls.
-
-        Only the inner (#settings-tabs) switcher is handled, and only while the
-        Settings tab is the visible outer tab — otherwise the initial activation
-        during compose would steal focus from the Jobs table at startup.
-        """
-        if event.tabbed_content is not self.query_one("#settings-tabs", TabbedContent):
-            return
-        try:
-            if self.app.query_one("#tabs", TabbedContent).active != "settings":
-                return
-        except Exception:
-            return
-        self._focus_active_subtab()
-        event.stop()
 
     # --- profile -------------------------------------------------------------
 

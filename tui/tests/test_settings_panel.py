@@ -52,11 +52,10 @@ def test_scoring_modifiers_have_their_own_subtab(_isolate):
             # The scoring table belongs to the scoring pane only, not disq.
             assert scoring_pane.query("#scoring-table")
             assert not disq_pane.query("#scoring-table")
-            # Switching to it pulls focus onto the (populated) scoring table.
+            # The scoring table is reachable once its sub-tab is active.
             panel.query_one("#settings-tabs", TabbedContent).active = "scoring"
             await pilot.pause()
-            assert app.focused is not None
-            assert app.focused.id == "scoring-table"
+            assert panel.query_one("#scoring-table", DataTable) is not None
 
     asyncio.run(scenario())
 
@@ -100,8 +99,9 @@ def test_switch_tab_cycles_through_settings(_isolate):
     asyncio.run(scenario())
 
 
-def test_entering_settings_focuses_a_control(_isolate):
-    """Opening Settings must land focus on a real control, not leave it None."""
+def test_entering_settings_focuses_the_subtab_header(_isolate):
+    """Opening Settings lands focus on the sub-tab header bar (not None and not
+    a body control), so left/right arrows switch sub-tabs immediately."""
 
     async def scenario():
         app = JobViewerApp(db_path=_isolate)
@@ -109,27 +109,40 @@ def test_entering_settings_focuses_a_control(_isolate):
             await pilot.press("t")
             await pilot.press("t")  # jobs -> companies -> settings
             assert app.query_one("#tabs").active == "settings"
-            focused = app.focused
-            assert focused is not None
-            # Profile is the initial sub-tab; its first control is the users table.
-            assert focused.id == "users-table"
+            panel = app.query_one(SettingsPanel)
+            assert app.focused is panel._tabs_header()
 
     asyncio.run(scenario())
 
 
-def test_switching_subtab_moves_focus_into_it(_isolate):
-    """Selecting a different sub-tab should pull focus into its first control."""
+def test_arrows_switch_subtabs_then_enter_descends(_isolate):
+    """From the header, left/right switch sub-tabs without leaving the header;
+    Enter descends into the active sub-tab's first control."""
 
     async def scenario():
         app = JobViewerApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
-            await pilot.press("t")  # into settings
+            await pilot.press("t")  # into settings; header focused, Profile active
             panel = app.query_one(SettingsPanel)
-            panel.query_one("#settings-tabs", TabbedContent).active = "sources"
+            tabs = panel.query_one("#settings-tabs", TabbedContent)
+            header = panel._tabs_header()
+            assert tabs.active == "profile"
+            # Right arrow advances the sub-tab; focus stays on the header.
+            await pilot.press("right")
+            await pilot.pause()
+            assert tabs.active == "config"
+            assert app.focused is header
+            # Left arrow goes back.
+            await pilot.press("left")
+            await pilot.pause()
+            assert tabs.active == "profile"
+            assert app.focused is header
+            # Enter descends into the active sub-tab's first control.
+            await pilot.press("enter")
             await pilot.pause()
             assert app.focused is not None
-            assert app.focused.id == "sources-table"
+            assert app.focused.id == "users-table"
 
     asyncio.run(scenario())
 
