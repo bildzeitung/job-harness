@@ -25,9 +25,9 @@ Researched 2026-06-04.
 | Open-ended research | WebSearch / WebFetch | `job-seeker-research` |
 
 Ashby, Workable, and Recruitee were added to the `greenhouse` ATS agent (2026-06-04
-/ 2026-06-05) because they share the same slug-fan-out mechanism and DB-enrichment
-semantics (public board API, remote + Canada-OK, `remote_confirmed` +
-`canada_confirmed`). Workable and Recruitee boards include on-site roles and skew
+/ 2026-06-05) because they share the same slug-fan-out mechanism and company-enrichment
+policy (public board API, remote + Canada-OK, so `harness-db companies seen` ratchets
+`remote_confirmed` + `canada_confirmed`). Workable and Recruitee boards include on-site roles and skew
 EU/SMB, so each fetcher folds the board's own remote flag (`telecommuting` /
 `remote`) into the location text to drive the shared remote filter, and the
 `canada_confirmed` flag is the same optimistic default the rest of the ATS bundle

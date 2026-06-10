@@ -5,7 +5,7 @@ flowchart TD
 
     %% ─── STAGE 1: SEEK ───────────────────────────────────────────────────────
     subgraph SEEK ["STAGE 1 — SEEK"]
-        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator<br>① Read enabled sources from the DB  (harness-db sources enabled)<br>② Init SQLite schema + seed/migrate config to DB  (users · sources · disqualifiers · target roles)<br>③ Generate candidate-summary.json  (cached per day; from resume + target roles read from the DB via harness-db target-roles show)<br>④ MCP connectivity probe  (LinkedIn · Indeed · ZipRecruiter)"]
+        SEEKER["job-seeker  ·  Sonnet  ·  orchestrator<br>① harness-db candidate-summary --write  (deterministic; from resume + DB target roles + CANDIDATE_* config; also seeds the schema; rewrites only on input change)<br>② Read enabled sources from the DB  (harness-db sources enabled)<br>③ MCP connectivity probe  (LinkedIn · Indeed · ZipRecruiter) — hard stop if an enabled source is unavailable"]
 
         SUB_LI["job-seeker-linkedin<br>LinkedIn MCP"]
         SUB_IND["job-seeker-indeed<br>Indeed MCP"]
@@ -13,13 +13,15 @@ flowchart TD
         SUB_ADZ["job-seeker-adzuna<br>Adzuna Canada REST API"]
         SUB_GH["job-seeker-greenhouse<br>Greenhouse · Lever · Ashby · Workable · Recruitee public ATS APIs"]
         SUB_REM["job-seeker-remotive<br>Remotive · Himalayas · We Work Remotely<br>remote-jobs boards (Canada-eligible)"]
-        SUB_RES["job-seeker-research<br>Wellfound · funded startups · niche boards<br>Canada boards (Job Bank · TrueUp · NoDesk)<br>→ UPSERT companies (notes · remote/Canada confirmed)"]
+        SUB_RES["job-seeker-research<br>Wellfound · funded startups · niche boards<br>Canada boards (Job Bank · TrueUp · NoDesk)<br>posting carries company_notes"]
+        CSEEN["Each searcher: harness-db companies seen --platform p FILE...<br>per-platform remote/Canada ratchet · notes · last_seen"]
 
         S_DONE["consolidate_module  (Python)<br>Merge per-platform temp files  ·  deduplicate against existing DB URLs<br>Audit log → jobs/search-YYYY-MM-DD.json<br>INSERT OR IGNORE postings (status = 'new')<br>Create companies row + company_postings link  (ON CONFLICT DO NOTHING)"]
 
         SEEKER -->|"conditional on probe"| SUB_LI & SUB_IND & SUB_ZIP
         SEEKER -->|"always · parallel"| SUB_ADZ & SUB_GH & SUB_REM & SUB_RES
-        SUB_LI & SUB_IND & SUB_ZIP & SUB_ADZ & SUB_GH & SUB_REM & SUB_RES --> S_DONE
+        SUB_LI & SUB_IND & SUB_ZIP & SUB_ADZ & SUB_GH & SUB_REM & SUB_RES --> CSEEN
+        CSEEN --> S_DONE
     end
 
     %% ─── Persistent store ────────────────────────────────────────────────────
@@ -63,8 +65,7 @@ flowchart TD
 
     %% ─── DB read/write connections ───────────────────────────────────────────
     S_DONE     -.->|"INSERT  status='new'"| DB
-    SUB_RES    -.->|"UPSERT companies"| DB
-    SUB_ADZ    -.->|"UPSERT companies (canada_confirmed)"| DB
+    CSEEN      -.->|"UPSERT companies (per-platform policy)"| DB
     DB         -.->|"read postings"| SC1
     DB         -.->|"read scored postings"| SEL1
     DB         -.->|"read companies"| PR1

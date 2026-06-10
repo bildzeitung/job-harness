@@ -213,7 +213,7 @@ The `modifier` field is the sum of independent adjustments computed during scori
 
 ## Table: `companies`
 
-One row per hiring company name. Populated during the **Seek** stage: `consolidate_module` creates the row (name + `last_seen_date`) when a posting is first inserted, the platform searchers (e.g. `job-seeker-adzuna`) enrich it with `canada_confirmed` / `last_seen_date`, and `job-seeker-research` adds `notes` plus the remote/Canada flags. `job-seeker-company` later fills `careers_url` / `fetch_notes`. Read by `job-preparer` when assembling the context it passes to each `resume-tailor` / `cover-letter-creator` agent.
+One row per hiring company name. Populated during the **Seek** stage: each searcher runs `harness-db companies seen --platform <p> FILE...` (library `harness_db.companies`), which upserts every company in its batch using a per-platform flag policy — remote/Canada ratchets, `last_seen_date` advance, and `notes` fill-if-empty (or overwrite from the research agent's `company_notes`). `consolidate_module` also creates any missing row (name + `last_seen_date`) when a posting is first inserted. `job-seeker-company` later fills `careers_url` / `fetch_notes`. Read by `job-preparer` when assembling the context it passes to each `resume-tailor` / `cover-letter-creator` agent.
 
 > Note: `scoring_module` — used both for the main-pipeline batch (driven by `job-preparer`) and for the single-posting "Score" action in the TUI/web (`--url`) — updates the `postings` row **and** ratchets this table's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags; see below.
 
@@ -237,9 +237,9 @@ CREATE TABLE companies (
 | `name` | TEXT PK | Company name as it appears in job postings. Primary key. |
 | `remote_confirmed` | INTEGER | `1` if any verified posting or research confirmed the company offers fully remote work; `0` otherwise. Never downgraded — once confirmed, stays confirmed. |
 | `canada_confirmed` | INTEGER | `1` if any verified posting or research confirmed Canada-eligibility; `0` otherwise. Never downgraded. |
-| `notes` | TEXT | 1–2 sentence research summary: funding stage, domain focus, team size, hiring signals. Written by `job-seeker-research`; preserved on subsequent upserts if non-empty. |
-| `researched_date` | TEXT | ISO 8601 date `job-seeker-research` last wrote a notes entry for this company. |
-| `last_seen_date` | TEXT | ISO 8601 date any pipeline stage last encountered a posting from this company. Advanced by the platform searchers / `consolidate_module` during Seek and by `scoring_module` on every scoring run. |
+| `notes` | TEXT | 1–2 sentence research summary: funding stage, domain focus, team size, hiring signals. The ATS/board searchers fill a default "Hiring on {board}" note when empty; `job-seeker-research` overwrites it from each posting's `company_notes`. |
+| `researched_date` | TEXT | ISO 8601 date `job-seeker-research` last upserted this company (stamped by the `research` flag policy). |
+| `last_seen_date` | TEXT | ISO 8601 date any pipeline stage last encountered a posting from this company. Advanced by `harness-db companies seen` / `consolidate_module` during Seek and by `scoring_module` on every scoring run. |
 | `careers_url` | TEXT | At least one URL to where the company posts its jobs (careers page or ATS board). Written by `job-seeker-company`. NULL until researched. |
 | `fetch_notes` | TEXT | Notes on how to fetch jobs and job descriptions from the company's site (ATS type, API endpoint, pagination), or the reason the careers URL could not be found. Written by `job-seeker-company`. |
 
@@ -304,7 +304,7 @@ seeded/migrated by `harness_db.seed.ensure_schema_and_seed`.
 | Table | Purpose |
 |-------|---------|
 | `users` | `uid` PK, `active` flag, `created_at`. |
-| `config_items` | Catalog of config keys (`JOB_DATA_ROOT`, `RESUME_FILE`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY`). |
+| `config_items` | Catalog of config keys: `JOB_DATA_ROOT`, `RESUME_FILE`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY`, and the candidate-summary judgment fields `CANDIDATE_HEADLINE`, `CANDIDATE_NOTABLE`, `CANDIDATE_YEARS_EXPERIENCE`, `CANDIDATE_WORK_TYPE`, `CANDIDATE_ELIGIBILITY`, `CANDIDATE_EMPLOYMENT`, `CANDIDATE_COMP_FLOOR_CAD`. |
 | `user_config_items` | Per-user value for a config key (PK `uid`+`config_key`). |
 | `sources` | Catalog of the 7 high-level search sources. |
 | `user_sources` | Per-user enabled flag for a source. |

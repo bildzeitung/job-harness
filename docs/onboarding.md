@@ -224,12 +224,21 @@ tuning carries over. They are complementary: **target roles** say what to
 The role titles, the title keywords that drive search queries and seniority
 filtering, and your domains of interest. These live in the DB (the source of
 truth); `job-seeker` reads them **directly** with `harness-db target-roles show`
-(Settings → Target Roles to edit) and folds them into the generated
-`candidate-summary.json` (name/headline/stack/location come from your resume).
-`harness-db target-roles generate` can still write `$JOB_DATA_ROOT/target-roles.md`
-for manual inspection, but the pipeline no longer depends on that file.
-Built-ins seed from
+(Settings → Target Roles to edit). `harness-db target-roles generate` can still
+write `$JOB_DATA_ROOT/target-roles.md` for manual inspection, but the pipeline no
+longer depends on that file. Built-ins seed from
 [`harness-db/harness_db/target-roles.default.yaml`](../harness-db/harness_db/target-roles.default.yaml).
+
+### Candidate profile fields — who you are
+
+`candidate-summary.json` (the compact profile every searcher reads) is assembled
+**deterministically** by `harness-db candidate-summary --write` — no daily LLM
+synthesis. `name`/`location`/`stack` come from your resume and the target/keyword/
+domain lists from the DB; the **judgment fields** are per-user config keys you edit
+in Settings → Config: `CANDIDATE_HEADLINE`, `CANDIDATE_NOTABLE`,
+`CANDIDATE_YEARS_EXPERIENCE`, `CANDIDATE_WORK_TYPE`, `CANDIDATE_ELIGIBILITY`,
+`CANDIDATE_EMPLOYMENT`, and the optional `CANDIDATE_COMP_FLOOR_CAD`. On first run
+they import from any existing `candidate-summary.json`, so prior values carry over.
 
 ### Disqualifiers — what to drop
 
@@ -243,8 +252,9 @@ Two independent parts:
 - **scoring modifiers** — negative score adjustments the scorer applies *during*
   scoring (e.g. requires a named certification → −40).
 
-The DB is the **single source of truth** for exclusions, read by the searchers,
-the scorer, and `job-preparer`. Edit it in Settings to tune behavior; see
+The DB is the **single source of truth** for exclusions, applied by `api_search`
+(so the searchers never read or apply them themselves), the scorer, and
+`job-preparer`. Edit it in Settings to tune behavior; see
 [job-states.md](job-states.md) and [database.md](database.md) for how the two
 mechanisms differ.
 

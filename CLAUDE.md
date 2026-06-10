@@ -52,11 +52,13 @@ the DB) → `default`. Agents still read `RESUME_FILE` at runtime via
 
 `JOB_TOP_N` (optional, default `5`) controls how many top-ranked postings `job-preparer`'s `phase: score` returns for the user to pick from. Omit it to keep the default of 5.
 
+The candidate-summary **judgment fields** are also DB config items (spec 14): `CANDIDATE_HEADLINE`, `CANDIDATE_NOTABLE`, `CANDIDATE_YEARS_EXPERIENCE`, `CANDIDATE_WORK_TYPE` (default "fully remote"), `CANDIDATE_ELIGIBILITY` (default "Canada-eligible"), `CANDIDATE_EMPLOYMENT` (csv, default "full-time,contract,freelance"), and `CANDIDATE_COMP_FLOOR_CAD` (optional). Edit them in Settings → Config; on first run they import from an existing `candidate-summary.json`.
+
 ### Disqualifiers
 
-The pipeline's hard disqualifiers are **data-driven and per-user**, stored in the DB and edited from Settings → Disqualifiers (or `harness-db disqualifiers …`). They hold both the pre-filter keyword rules (`prefilter`) and the scoring-modifier blocks (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer: the platform searchers (and the `api_search` module) drop matching postings at search time so noise never enters the DB, and `job-preparer` re-applies it to mark any survivors `skipped` before scoring. The loader lives in `harness_db.disqualifiers` (DB-backed, with a legacy `disqualifiers.yaml` file fallback when no DB exists); built-ins seed from `harness-db/harness_db/disqualifiers.default.yaml` and any existing `disqualifiers.yaml` is imported once on first run. Read by the `job-seeker-*` search agents, `api_search`, `scoring_module`, and `job-preparer`.
+The pipeline's hard disqualifiers are **data-driven and per-user**, stored in the DB and edited from Settings → Disqualifiers (or `harness-db disqualifiers …`). They hold both the pre-filter keyword rules (`prefilter`) and the scoring-modifier blocks (`scoring_modifiers`, applied by the scorer during scoring). The `prefilter` is the single **early-disqualification** layer, applied by the `api_search` module (its `run()` for the API sources, and `append` when an MCP searcher merges its batch) so noise never enters the DB — the searcher agents do **not** read or apply the rules themselves. `job-preparer` re-applies it via `harness-db prefilter` to mark any survivors `skipped` before scoring. The loader lives in `harness_db.disqualifiers` (DB-backed, with a legacy `disqualifiers.yaml` file fallback when no DB exists); built-ins seed from `harness-db/harness_db/disqualifiers.default.yaml` and any existing `disqualifiers.yaml` is imported once on first run. Read by `api_search`, `scoring_module`, and `job-preparer`.
 
-Positive search inputs are also DB-driven. The target role titles, title keywords, and domains of interest live per-user in the DB (Settings → Target Roles, or `harness-db target-roles …`); built-ins seed from `harness-db/harness_db/target-roles.default.yaml`. The DB is the source of truth and is read **directly** — `job-seeker` Step 0 runs `harness-db target-roles show` (which renders them from the DB via the shared `harness_db.target_roles` library) instead of consuming a generated file. (`harness-db target-roles generate` can still write `$JOB_DATA_ROOT/target-roles.md` for manual inspection, but nothing in the pipeline depends on it.) Everything else (name, headline, stack, location, work-type/eligibility/employment) comes from the resume. `job-seeker` Step 0 synthesizes the resume plus that rendered target-roles output into `candidate-summary.json` that every searcher reads. Exclusions belong in disqualifiers; positive targets in target roles.
+Positive search inputs are also DB-driven. The target role titles, title keywords, and domains of interest live per-user in the DB (Settings → Target Roles, or `harness-db target-roles …`); built-ins seed from `harness-db/harness_db/target-roles.default.yaml`. The DB is the source of truth and is read **directly** via the shared `harness_db.target_roles` library. `candidate-summary.json` — the compact profile every searcher reads — is assembled **deterministically** by `harness-db candidate-summary --write` (run in `job-seeker` Step 0): `name`/`location`/`stack` from the resume, `target_titles`/`seniority_keywords`/`domains` from the DB target-roles, and the judgment fields from the `CANDIDATE_*` config keys. It is rewritten only when its inputs change (an `inputs_hash`), so there is no daily LLM synthesis. Exclusions belong in disqualifiers; positive targets in target roles.
 
 ### Source selection
 
@@ -94,7 +96,7 @@ libraries so neither front-end forks the logic:
 
 ## Agents
 
-Nine agents are configured in [.claude/agents/](.claude/agents/):
+The agents are configured in [.claude/agents/](.claude/agents/):
 
 **CV agents:**
 - **resume-evaluator** — Runs the CV through achievement reframing, 10-second scan test, and red flag detection. Use via `/resume-work` skill.
@@ -105,6 +107,8 @@ Nine agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker** — Orchestrator: spawns the enabled platform searchers (from the DB sources catalog) in parallel, merges results, deduplicates against the SQLite DB, inserts new postings, saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`.
 - **job-seeker-linkedin** — Searches LinkedIn via the LinkedIn MCP server (`mcp__linkedin__search_jobs`).
 - **job-seeker-indeed** — Searches Indeed via the Indeed MCP server.
+
+  Each searcher records the hiring companies it saw with one `harness-db companies seen --platform <p> FILE...` call (the per-platform remote/Canada ratchet + notes policy lives in `harness_db.companies`), replacing the per-company SQL the agents used to hand-write.
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
@@ -112,7 +116,7 @@ Nine agents are configured in [.claude/agents/](.claude/agents/):
 
 Scoring is **not** an agent — it is the `scoring_module` Python script (`python -m scoring_module`), which calls the Claude API directly. `job-preparer` runs it on a batch during `/job-search`; the TUI/web "Score" button runs it on a single posting (`--url`). It writes the posting's scores **and** ratchets the hiring company's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags.
 
-CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `model: opus`. Pipeline agents use `model: sonnet`.
+CV agents (`resume-evaluator`, `resume-tailor`, `cover-letter-creator`) use `model: opus`. The orchestrators (`job-seeker`, `job-preparer`) and `job-seeker-research`/`-company` use `model: sonnet`; the deterministic searchers that just run CLI commands and forward output (`job-seeker-adzuna`, `-greenhouse`, `-remotive`) use `model: haiku`, as do the MCP searchers (`-linkedin`, `-indeed`, `-ziprecruiter`).
 
 ## General Directives
 

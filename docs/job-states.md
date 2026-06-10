@@ -42,7 +42,7 @@ stateDiagram-v2
 ### Notes
 
 - Selection is **user-driven**: `job-preparer` returns the ranked top-N (postings with `final_score ≥ 75`; N is set by the `JOB_TOP_N` env var, default 5) to the `job-search` skill, the user picks which to prepare, and only the chosen URLs are marked `selected`. A posting that scores below 75 is **not** marked `skipped` — it remains `scored` and is simply not offered. It stays eligible if future runs surface it again.
-- The pre-filter actually runs in **two places**. At search time the platform searchers and the `api_search` module drop matching postings so they never enter the DB (no row, no status). The `skipped` status is set only by `job-preparer`, which re-applies the same `disqualifiers.yaml` `prefilter` to any rows that slipped through, before scoring.
+- The pre-filter actually runs in **two places**. At search time the `api_search` module drops matching postings (its `run()` for the API sources, and `append` when an MCP searcher merges its batch) so they never enter the DB (no row, no status) — the searcher agents do not apply the rules themselves. The `skipped` status is set only by `job-preparer`, which re-applies the same DB `prefilter` (via `harness-db prefilter`) to any rows that slipped through, before scoring.
 - A `scored` posting older than 7 days is re-queued for scoring on the next pipeline run. It stays in `scored` state but gets fresh scores before re-evaluation.
 - `selected`, `prepared`, and `applied` postings are all excluded from the ranked candidate list in future pipeline runs.
 - `rejected` is a user-driven terminal state for postings the user has explicitly decided not to apply to, distinct from `skipped` (which is automatic pre-filter exclusion).

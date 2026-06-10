@@ -1,6 +1,8 @@
 flowchart TD
     RESUME(["Resume YAML"])
-    DISQ(["Disqualifiers YAML"])
+    DISQ(["Disqualifiers (DB, per-user)"])
+    TR(["Target roles + candidate config (DB)"])
+    CS["harness-db candidate-summary --write<br>→ candidate-summary.json (deterministic)"]
 
     subgraph BOARDS ["External Sources"]
         direction LR
@@ -9,8 +11,10 @@ flowchart TD
     end
 
     subgraph SEEK ["Stage 1 — Seek    (job-seeker)"]
-        S["Search all sources in parallel<br>Deduplicate (URL + semantic repost) · insert new postings"]
+        S["Search all sources in parallel<br>api_search applies the prefilter on merge<br>Deduplicate (URL + semantic repost) · insert new postings"]
+        CO["harness-db companies seen<br>ratchet remote/Canada · notes · last_seen"]
         SR["search-report-YYYY-MM-DD.md<br>Per-source counts · fetch problems · execution issues"]
+        S --> CO
         S --> SR
     end
 
@@ -37,9 +41,13 @@ flowchart TD
         FR["final-report.md"]
     end
 
+    RESUME  -->|"name · location · stack"| CS
+    TR      -->|"titles · keywords · domains · judgment fields"| CS
+    CS      -->|"search guidance"| S
     BOARDS  --> S
-    RESUME  -->|"search guidance"| S
+    DISQ    -->|"prefilter (api_search)"| S
     S       -->|"INSERT new postings"| DB
+    CO      -->|"upsert companies"| DB
     DB      -->|"unscored postings"| F
     DISQ    -->|"keyword blocklist"| F
     RESUME  -->|"fit scoring context"| SC
