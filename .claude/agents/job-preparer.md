@@ -62,7 +62,7 @@ It prints `[SCORED]`/`[REUSED]` per posting and `[BATCH DONE]` at the end, sets 
 
 ## Step 4: Query Ranked Results from DB (current batch only)
 
-Return the top-N (N = `JOB_TOP_N`, default 5) of **the current batch** — the most recent `scored_date` — not of every posting ever scored (so the user always sees a real ranking even when Step 3 was skipped). Load the read tool (ToolSearch `query: "select:mcp__sqlite__read_query"`) if needed, then find the batch date:
+Return the top-N (N = the `JOB_TOP_N` per-user config value, default 5) of **the current batch** — the most recent `scored_date` — not of every posting ever scored (so the user always sees a real ranking even when Step 3 was skipped). Load the read tool (ToolSearch `query: "select:mcp__sqlite__read_query"`) if needed, then find the batch date:
 
 ```sql
 SELECT MAX(scored_date) AS batch_date FROM postings WHERE scored_date IS NOT NULL
@@ -71,7 +71,7 @@ SELECT MAX(scored_date) AS batch_date FROM postings WHERE scored_date IS NOT NUL
 Call it `BATCH_DATE`. If `NULL` (nothing ever scored), return an empty ranked list and stop. Otherwise ask the CLI for the ranked top-N — **do not hand-write SQL or rank in your head.** `--scored-on BATCH_DATE` scopes the ranking and counts to this batch; the CLI ranks by score desc then fewest applicants and excludes `selected`/`prepared`/`applied`/`skipped`:
 
 ```bash
-TOP_N="${JOB_TOP_N:-5}"
+TOP_N="$(harness-db config get JOB_TOP_N 2>/dev/null || echo 5)"
 harness-db report --json --min-score 75 --top "$TOP_N" --scored-on "$BATCH_DATE"
 ```
 

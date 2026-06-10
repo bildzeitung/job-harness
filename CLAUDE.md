@@ -33,8 +33,7 @@ committed):
     "ADZUNA_APP_ID": "**REDACTED**",
     "ADZUNA_API_KEY": "**REDACTED**",
     "JOB_DATA_ROOT": "/absolute/path/to/job-data",
-    "RESUME_FILE": "/absolute/path/to/Your_Name_CV.yaml",
-    "JOB_TOP_N": "5"
+    "RESUME_FILE": "/absolute/path/to/Your_Name_CV.yaml"
   }
 }
 ```
@@ -50,7 +49,7 @@ Settings. The active user is resolved CLI flag → `.active-user` dotfile (besid
 the DB) → `default`. Agents still read `RESUME_FILE` at runtime via
 `bash -c 'echo $RESUME_FILE'` (env fallback).
 
-`JOB_TOP_N` (optional, default `5`) controls how many top-ranked postings `job-preparer`'s `phase: score` returns for the user to pick from. Omit it to keep the default of 5.
+`JOB_TOP_N` (optional, default `5`) is also a DB config item: it controls how many top-ranked postings `job-preparer`'s `phase: score` returns for the user to pick from. Edit it in Settings → Config or via `harness-db config set JOB_TOP_N <n>`; leave it unset to keep the default of 5 (a legacy `JOB_TOP_N` env var still works as the fallback).
 
 The candidate-summary **judgment fields** are also DB config items (spec 14): `CANDIDATE_HEADLINE`, `CANDIDATE_NOTABLE`, `CANDIDATE_YEARS_EXPERIENCE`, `CANDIDATE_WORK_TYPE` (default "fully remote"), `CANDIDATE_ELIGIBILITY` (default "Canada-eligible"), `CANDIDATE_EMPLOYMENT` (csv, default "full-time,contract,freelance"), and `CANDIDATE_COMP_FLOOR_CAD` (optional). Edit them in Settings → Config; on first run they import from an existing `candidate-summary.json`.
 
@@ -112,7 +111,7 @@ The agents are configured in [.claude/agents/](.claude/agents/):
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).
 - **job-seeker-research** — Finds companies actively hiring via non-LinkedIn/non-Indeed sources (Greenhouse, Lever, Wellfound, funded startups). Acts as a recruitment expert targeting growing and recently funded companies.
 - **job-seeker-company** — Researches companies already in the DB and fills in missing intelligence: a careers/jobs-page URL plus notes on how to fetch jobs and job descriptions from that site. Writes findings to the `companies` table and a summary report. Run standalone via the `company-research` skill.
-- **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-N (count set by the `JOB_TOP_N` env var, default 5); `phase: prepare` (given the user-selected URLs) spawns one `resume-tailor` per selected job in parallel, renders the PDFs, and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) spawns one `cover-letter-creator` per job and updates the report. Cover letters are off by default.
+- **job-preparer** — Phase-driven orchestrator (it cannot prompt the user — its questions don't surface from a subagent, so the calling skill owns all user interaction): `phase: score` scores and returns a ranked top-N (count set by the `JOB_TOP_N` per-user config value, default 5); `phase: prepare` (given the user-selected URLs) spawns one `resume-tailor` per selected job in parallel, renders the PDFs, and writes the final report with URLs to `job-data/output/YYYY-MM-DD/final-report.md`; `phase: cover-letters` (given the prepared jobs, only if the user opts in) spawns one `cover-letter-creator` per job and updates the report. Cover letters are off by default.
 
 Scoring is **not** an agent — it is the `scoring_module` Python script (`python -m scoring_module`), which calls the Claude API directly. `job-preparer` runs it on a batch during `/job-search`; the TUI/web "Score" button runs it on a single posting (`--url`). It writes the posting's scores **and** ratchets the hiring company's `remote_confirmed` / `canada_confirmed` / `last_seen_date` flags.
 

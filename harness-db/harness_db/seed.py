@@ -99,6 +99,11 @@ BUILTIN_CONFIG_ITEMS: list[dict[str, str]] = [
     },
     {"key": "ADZUNA_APP_ID", "name": "Adzuna app ID", "description": "Adzuna API application id."},
     {"key": "ADZUNA_API_KEY", "name": "Adzuna API key", "description": "Adzuna API key."},
+    {
+        "key": "JOB_TOP_N",
+        "name": "Top N postings",
+        "description": "How many top-ranked postings job-preparer's score phase returns (default 5).",
+    },
     # Candidate-summary judgment fields (spec 14 A4): the deterministic
     # `harness-db candidate-summary` command reads these instead of an LLM
     # re-inventing them daily. Edit them in Settings → Config.
