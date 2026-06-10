@@ -34,7 +34,7 @@ the DB itself.
 
    **Present the detailed search report.** `job-seeker` returns a detailed report (also written to `job-data/jobs/search-report-YYYY-MM-DD.md`) with three sections: (1) every source and the number of positions found in each, (2) any content-fetch problems, and (3) any other execution issues. Show this report to the user verbatim before moving on to scoring — do not summarize it away. If the agent's reply did not include the report, read it from `$JOB_DATA_ROOT/jobs/search-report-YYYY-MM-DD.md` and present that.
 
-2. **Score & rank.** Spawn `job-preparer` with `phase: score`. It scores every new/stale posting in parallel and returns a ranked top-N table (N is set by the `JOB_TOP_N` env var, default 5) — scoped to the **current batch** (the most recent scoring date), not all-time — that includes each job's URL. Wait for it to complete.
+2. **Score & rank.** Spawn `job-preparer` with `phase: score`. It scores every new/stale posting in parallel and returns a ranked top-N table (N is set by the `JOB_TOP_N` per-user config value, default 5) — scoped to the **current batch** (the most recent scoring date), not all-time — that includes each job's URL. Wait for it to complete.
 
 3. **Ask which jobs to prepare.** Present the ranked table to the user (you may drop the URL column for readability). Then ask, in plain text:
 

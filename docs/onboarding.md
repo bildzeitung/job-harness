@@ -152,8 +152,7 @@ file is gitignored — never commit it.** Create it if it does not exist:
     "RESUME_FILE": "/absolute/path/to/Your_Name_CV.yaml",
     "JOB_DATA_ROOT": "/home/you/job-data",
     "ADZUNA_APP_ID": "your-adzuna-app-id",
-    "ADZUNA_API_KEY": "your-adzuna-api-key",
-    "JOB_TOP_N": "5"
+    "ADZUNA_API_KEY": "your-adzuna-api-key"
   }
 }
 ```
@@ -164,9 +163,15 @@ file is gitignored — never commit it.** Create it if it does not exist:
 | `RESUME_FILE` | Absolute path to the YAML from [§5](#5-create-your-resume-yaml). Now a DB config item too; the env value is a fallback and the source for the first-run import. |
 | `JOB_DATA_ROOT` | Your job-data directory (tailored output at `$JOB_DATA_ROOT/output/`). Also a DB config item; env is the fallback/seed. |
 | `ADZUNA_APP_ID` / `ADZUNA_API_KEY` | Adzuna Canada API credentials. Now DB config items; env is the fallback/seed. Needed only for the Adzuna source. |
+
+A few more knobs are pure DB config items (no env entry needed) — edit them in
+**Settings → Config** or with `harness-db config set <KEY> <value>`:
+
+| Config key | What it does |
+|------------|--------------|
 | `JOB_TOP_N` | Optional. How many top-ranked postings `/job-search` presents for you to choose from. Defaults to `5` if unset. |
 
-> **How resolution works.** `RESUME_FILE`, `ADZUNA_*`, and `JOB_DATA_ROOT`
+> **How resolution works.** `RESUME_FILE`, `ADZUNA_*`, `JOB_DATA_ROOT`, and `JOB_TOP_N`
 > resolve as: the active user's stored value → the env / `settings.local.json`
 > fallback. On first run the harness seeds a `default` user and **imports** your
 > existing env values + config files into it, so an existing single-user setup

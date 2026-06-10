@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from harness_db.config import DEFAULT_UID
 from harness_db.models import (
+    ConfigItem,
     PrefilterRule,
     ScoringModifierBlock,
     Source,
@@ -21,7 +22,7 @@ from harness_db.models import (
     UserTargetRole,
     make_engine,
 )
-from harness_db.seed import BUILTIN_SOURCES, ensure_schema_and_seed
+from harness_db.seed import BUILTIN_CONFIG_ITEMS, BUILTIN_SOURCES, ensure_schema_and_seed
 
 
 @pytest.fixture
@@ -37,6 +38,9 @@ def test_seed_creates_catalogs_and_default_user(engine):
         assert s.scalar(select(PrefilterRule.id).limit(1)) is not None
         assert s.scalar(select(ScoringModifierBlock.id).limit(1)) is not None
         assert s.scalar(select(TargetRoleItem.id).limit(1)) is not None
+        config_keys = set(s.scalars(select(ConfigItem.key)))
+        assert {x["key"] for x in BUILTIN_CONFIG_ITEMS} <= config_keys
+        assert "JOB_TOP_N" in config_keys
 
 
 def test_default_user_has_all_builtins_enabled(engine):
@@ -67,6 +71,7 @@ def test_import_existing_applies_files(engine, tmp_path, monkeypatch):
     (data_root / "jobs").mkdir(parents=True)
     monkeypatch.setenv("JOB_DATA_ROOT", str(data_root))
     monkeypatch.setenv("RESUME_FILE", "/path/to/cv.yaml")
+    monkeypatch.setenv("JOB_TOP_N", "7")
 
     (data_root / "jobs" / "sources-config.json").write_text(
         json.dumps({"enabled": ["adzuna", "greenhouse"]})
@@ -126,6 +131,12 @@ def test_import_existing_applies_files(engine, tmp_path, monkeypatch):
             )
         )
         assert rf is not None and rf.value == "/path/to/cv.yaml"
+        top_n = s.scalar(
+            select(UserConfigItem).where(
+                UserConfigItem.uid == DEFAULT_UID, UserConfigItem.config_key == "JOB_TOP_N"
+            )
+        )
+        assert top_n is not None and top_n.value == "7"
 
 
 def test_import_runs_once_not_on_rerun(engine, tmp_path, monkeypatch):
