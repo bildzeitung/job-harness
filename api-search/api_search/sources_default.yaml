@@ -13,6 +13,8 @@
 adzuna:
   results_per_page: 50
   full_time: 1
+  # Seconds between serialized queries — the free tier 429s under parallel fan-out.
+  request_delay: 1.5
 
 # Slugs are validated periodically — companies migrate ATS often, and a dead
 # board only emits a 404 error and zero results. When a board 404s, hunt its new

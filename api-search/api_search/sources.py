@@ -54,8 +54,10 @@ MAX_FETCH_WORKERS = 8
 # Adzuna is a single rate-limited search API (unlike the per-board ATS endpoints,
 # which tolerate the full fan-out). Firing all target-title queries at once trips
 # its free-tier limit — the 2026-06-07 run lost 4 of 8 queries to HTTP 429 — so
-# Adzuna gets its own low concurrency plus a 429-aware retry (see _adzuna_get).
-ADZUNA_MAX_WORKERS = 2
+# Adzuna's queries are **serialized** with an inter-request delay (configurable in
+# sources_default.yaml as `adzuna.request_delay`) plus a per-query 429-aware retry
+# (Retry-After, else exponential backoff; see _adzuna_get).
+ADZUNA_REQUEST_DELAY = 1.5
 ADZUNA_MAX_RETRIES = 3
 ADZUNA_BACKOFF_BASE = 2.0
 
@@ -201,9 +203,16 @@ def _adzuna_get(client: httpx.Client, params: dict[str, Any]) -> httpx.Response:
 
 
 def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:
-    """Keyword search against the Adzuna Canada endpoint, one query per target title."""
+    """Keyword search against the Adzuna Canada endpoint, one query per target title.
+
+    Queries are **serialized** with `adzuna.request_delay` seconds between them
+    (default :data:`ADZUNA_REQUEST_DELAY`) to stay under the free tier's rate
+    limit; a query exhausting its 429 retries logs a `[WARN]` and is skipped, so
+    partial results survive rather than aborting the source.
+    """
     app_id = get_config("ADZUNA_APP_ID")
     app_key = get_config("ADZUNA_API_KEY")
+    delay = cfg.get("request_delay", ADZUNA_REQUEST_DELAY)
 
     def _fetch_query(q: str) -> list[dict[str, Any]]:
         try:
@@ -219,7 +228,7 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
             )
             data = resp.json()
         except Exception as e:
-            print(f'[ADZUNA] Query "{q}" failed: {e}', flush=True)
+            print(f'[WARN] [ADZUNA] Query "{q}" failed: {e}', flush=True)
             return []
 
         return [
@@ -234,11 +243,10 @@ def fetch_adzuna(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dic
             for job in data.get("results", [])
         ]
 
-    # Low concurrency so the per-query 429 retry isn't fighting a flood of our own
-    # parallel requests — the rate-limited single endpoint, unlike the ATS boards.
-    yield from _fetch_in_parallel(
-        queries_from_summary(summary), _fetch_query, max_workers=ADZUNA_MAX_WORKERS
-    )
+    for i, q in enumerate(queries_from_summary(summary)):
+        if i > 0 and delay:
+            time.sleep(delay)
+        yield from _fetch_query(q)
 
 
 def fetch_greenhouse(client: httpx.Client, summary: dict, cfg: dict) -> Iterator[dict[str, Any]]:

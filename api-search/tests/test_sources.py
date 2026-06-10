@@ -1,6 +1,7 @@
 """Tests for api_search.sources — fetch generators and helpers."""
 
 from api_search.sources import (
+    ADZUNA_MAX_RETRIES,
     SOURCES,
     _canada_eligible,
     _epoch_ms_to_date,
@@ -129,6 +130,50 @@ def test_fetch_adzuna_retries_on_429(adzuna_env, monkeypatch, capsys):
     assert calls["n"] == 2  # retried after the 429
     assert [j["url"] for j in jobs] == ["https://adzuna.ca/jobs/1"]
     assert "429" in capsys.readouterr().out
+
+
+def test_fetch_adzuna_serializes_queries_with_delay(adzuna_env, monkeypatch):
+    # Queries run one at a time with `request_delay` seconds between them.
+    sleeps: list[float] = []
+    monkeypatch.setattr("api_search.sources.time.sleep", sleeps.append)
+    summary = {"target_titles": ["Principal Engineer", "Staff Engineer", "Cloud Architect"]}
+
+    client = make_client(lambda url, params: FakeResp({"results": []}))
+    list(fetch_adzuna(client, summary, {"request_delay": 0.7}))
+
+    assert client.get.call_count == 3
+    assert sleeps == [0.7, 0.7]  # between queries only, never before the first
+
+
+def test_fetch_adzuna_drops_query_after_429_retries(adzuna_env, monkeypatch, capsys):
+    # A query that 429s through every retry is skipped; the rest of the run survives.
+    monkeypatch.setattr("api_search.sources.time.sleep", lambda _s: None)
+    summary = {"target_titles": ["Principal Engineer", "Staff Engineer"]}
+    payload = {
+        "results": [
+            {
+                "title": "Staff Engineer",
+                "company": {"display_name": "Acme Corp"},
+                "redirect_url": "https://adzuna.ca/jobs/2",
+                "created": "2026-05-25T12:00:00Z",
+                "description": "Fully remote.",
+            }
+        ]
+    }
+    calls = {"limited": 0}
+
+    def route(url, params):
+        if params["what"] == "Principal Engineer remote":
+            calls["limited"] += 1
+            return FakeResp({}, status=429)
+        return FakeResp(payload)
+
+    client = make_client(route)
+    jobs = list(fetch_adzuna(client, summary, {}))
+
+    assert calls["limited"] == ADZUNA_MAX_RETRIES + 1  # initial try + every retry
+    assert [j["url"] for j in jobs] == ["https://adzuna.ca/jobs/2"]
+    assert "[WARN]" in capsys.readouterr().out
 
 
 # ── fetch_greenhouse ──────────────────────────────────────────────────────────
