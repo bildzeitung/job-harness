@@ -54,6 +54,29 @@ _DIMENSION_WEIGHTS = {
 }
 
 
+_DIMENSION_KEYS = tuple(_DIMENSION_WEIGHTS)
+
+
+def _modifier_floor() -> int:
+    """Lowest legitimate ``disqualifier_modifier`` = sum of enabled negative modifiers.
+
+    A model can only legitimately stack the enabled negative scoring modifiers, so
+    their sum is the floor; anything below it (or above 0) is a hallucination and
+    is clamped. Computed once at import — the scorer process is short-lived.
+    """
+    try:
+        mods = load_disqualifiers().get("scoring_modifiers", []) or []
+    except Exception:
+        return 0
+    return sum(
+        m["modifier"]
+        for m in mods
+        if isinstance(m.get("modifier"), int)
+        and not isinstance(m.get("modifier"), bool)
+        and m["modifier"] < 0
+    )
+
+
 def _render_disqualifiers(config: dict[str, Any]) -> str:
     lines = []
     for d in config.get("scoring_modifiers", []):
@@ -98,6 +121,7 @@ def _load_system_prompt() -> str:
 
 
 _SYSTEM_PROMPT = _load_system_prompt()
+_MODIFIER_FLOOR = _modifier_floor()
 
 
 def _retry(fn, *args, **kwargs):
@@ -313,6 +337,80 @@ def _compute_base_score(dimension_scores: dict[str, Any], fallback: Any) -> int:
     return max(1, min(100, round(weighted * 10)))
 
 
+def _default_scored() -> dict[str, Any]:
+    """Neutral fallback when the model output can't be parsed after a retry."""
+    return {
+        "dimension_scores": dict.fromkeys(_DIMENSION_KEYS, 5),
+        "base_score": 50,
+        "disqualifier_modifier": 0,
+        "scoring_notes": "JSON parse failed; default score applied",
+    }
+
+
+def _request_scores(client: anthropic.Anthropic, user_msg: str):
+    return _retry(
+        client.messages.create,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=512,
+        system=[{"type": "text", "text": _SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+
+def _call_and_parse(client: anthropic.Anthropic, user_msg: str) -> dict[str, Any] | None:
+    """One API call + parse; returns the parsed dict, or None on a parse failure."""
+    resp = _request_scores(client, user_msg)
+    try:
+        return _parse_json_response(resp.content[0].text)
+    except (json.JSONDecodeError, IndexError, AttributeError):
+        return None
+
+
+def _clamp_disqualifier(value: Any, label: str) -> int:
+    """Clamp the model's ``disqualifier_modifier`` to ``[_MODIFIER_FLOOR, 0]``.
+
+    A non-int (or bool) becomes 0; a positive value (the model can't *add* points
+    via a disqualifier) clamps to 0; a value below the enabled-modifier floor
+    clamps up. Every clamp prints a ``[WARN]`` so hallucinated modifiers are
+    visible without corrupting ``final_score``.
+    """
+    if not isinstance(value, int) or isinstance(value, bool):
+        print(
+            f"[WARN] non-int disqualifier_modifier {value!r} for {label}; using 0",
+            file=sys.stderr,
+        )
+        return 0
+    if value > 0:
+        print(
+            f"[WARN] positive disqualifier_modifier {value} for {label}; clamping to 0",
+            file=sys.stderr,
+        )
+        return 0
+    if value < _MODIFIER_FLOOR:
+        print(
+            f"[WARN] disqualifier_modifier {value} below floor {_MODIFIER_FLOOR} "
+            f"for {label}; clamping",
+            file=sys.stderr,
+        )
+        return _MODIFIER_FLOOR
+    return value
+
+
+def _sanitize_dimension_scores(dims: Any) -> dict[str, Any]:
+    """Drop dimension values outside the 1–10 range (out-of-range → treated as
+    missing, so ``_compute_base_score`` takes its fallback path instead of
+    weight-averaging a hallucinated value)."""
+    clean: dict[str, Any] = {}
+    for key, value in (dims or {}).items():
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= numeric <= 10:
+            clean[key] = value
+    return clean
+
+
 def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str, Any]:
     url = posting.get("url", "")
     title = posting.get("title", "")
@@ -337,42 +435,31 @@ def _score_one(client: anthropic.Anthropic, posting: dict[str, Any]) -> dict[str
             fetch_failed = True
 
     user_msg = f"Title: {title}\nCompany: {company}\nURL: {url}\n\nJob Description:\n{jd_text}"
+    label = f"{company} — {title}"
 
-    resp = _retry(
-        client.messages.create,
-        model="claude-haiku-4-5-20251001",
-        max_tokens=512,
-        system=[{"type": "text", "text": _SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user_msg}],
-    )
+    # Parse the model's JSON; on failure retry once with a fresh sample before
+    # falling back to a neutral score, so a single bad sample doesn't strand a
+    # posting at the default 50 (spec 14 A3).
+    parse_failed = False
+    scored = _call_and_parse(client, user_msg)
+    if scored is None:
+        print(f"[WARN] JSON parse failed for {label}; retrying once", file=sys.stderr)
+        scored = _call_and_parse(client, user_msg)
+    if scored is None:
+        parse_failed = True
+        scored = _default_scored()
 
-    try:
-        scored = _parse_json_response(resp.content[0].text)
-    except (json.JSONDecodeError, IndexError, AttributeError):
-        scored = {
-            "dimension_scores": {
-                k: 5
-                for k in (
-                    "technical_fit",
-                    "seniority_match",
-                    "domain_fit",
-                    "remote_canada_confirmed",
-                    "role_clarity",
-                )
-            },
-            "base_score": 50,
-            "disqualifier_modifier": 0,
-            "scoring_notes": "JSON parse failed; default score applied",
-        }
-
-    dimension_scores = scored.get("dimension_scores", {})
+    dimension_scores = _sanitize_dimension_scores(scored.get("dimension_scores", {}))
     base_score = _compute_base_score(dimension_scores, scored.get("base_score", 50))
-    disqualifier_mod: int = scored.get("disqualifier_modifier", 0)
+    disqualifier_mod = _clamp_disqualifier(scored.get("disqualifier_modifier", 0), label)
     time_mod = _age_modifier(post_date)
     comp_mod = _competition_modifier(applicant_count)
     modifier = disqualifier_mod + time_mod + comp_mod
 
     notes: str = scored.get("scoring_notes", "")
+    if parse_failed:
+        # Tag the row so it's findable/regradable via `harness-db postings` filters.
+        notes = f"[PARSE-FAILED] {notes}".strip()
     if fetch_failed:
         notes = f"[WebFetch failed; scored from summary] {notes}"
         modifier -= 5

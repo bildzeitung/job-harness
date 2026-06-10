@@ -385,17 +385,81 @@ def test_score_one_fetch_failure_uses_summary_and_penalises():
 # ---------------------------------------------------------------------------
 
 
-def test_score_one_invalid_json_uses_default():
+def _msg(text: str) -> MagicMock:
     block = MagicMock()
-    block.text = "not json {{{"
+    block.text = text
     msg = MagicMock()
     msg.content = [block]
+    return msg
+
+
+def test_score_one_invalid_json_uses_default():
     client = MagicMock()
-    client.messages.create.return_value = msg
+    client.messages.create.return_value = _msg("not json {{{")
 
     result = _score_one(client, _posting())
     assert result["base_score"] == 50
     assert "JSON parse failed" in result["scoring_notes"]
+
+
+def test_score_one_retries_once_then_succeeds():
+    # First sample is unparseable, the retried sample is valid → no PARSE-FAILED tag.
+    good = json.dumps(
+        {
+            "dimension_scores": dict.fromkeys(_FULL_DIMS, 8),
+            "base_score": 80,
+            "disqualifier_modifier": 0,
+            "scoring_notes": "Good fit",
+        }
+    )
+    client = MagicMock()
+    client.messages.create.side_effect = [_msg("garbage"), _msg(good)]
+
+    result = _score_one(client, _posting())
+    assert client.messages.create.call_count == 2
+    assert "[PARSE-FAILED]" not in result["scoring_notes"]
+    assert result["base_score"] == 80
+
+
+def test_score_one_double_parse_failure_tags_row():
+    client = MagicMock()
+    client.messages.create.return_value = _msg("still not json")
+
+    result = _score_one(client, _posting())
+    assert client.messages.create.call_count == 2  # original + one retry
+    assert result["base_score"] == 50
+    assert result["scoring_notes"].startswith("[PARSE-FAILED]")
+
+
+def test_score_one_clamps_positive_disqualifier(monkeypatch):
+    monkeypatch.setattr("scoring_module.scorer._MODIFIER_FLOOR", -95)
+    client = _api_response(base_score=75, disqualifier_modifier=40)
+    result = _score_one(client, _posting())
+    assert result["modifier"] == 0  # positive disqualifier clamped to 0
+    assert result["final_score"] == 75
+
+
+def test_score_one_clamps_below_floor(monkeypatch):
+    monkeypatch.setattr("scoring_module.scorer._MODIFIER_FLOOR", -95)
+    client = _api_response(base_score=80, disqualifier_modifier=-500)
+    result = _score_one(client, _posting())
+    assert result["modifier"] == -95  # clamped up to the enabled-modifier floor
+
+
+def test_score_one_non_int_disqualifier_becomes_zero(monkeypatch):
+    monkeypatch.setattr("scoring_module.scorer._MODIFIER_FLOOR", -95)
+    client = _api_response(base_score=70, disqualifier_modifier="lots")
+    result = _score_one(client, _posting())
+    assert result["modifier"] == 0
+
+
+def test_score_one_out_of_range_dimension_falls_back():
+    # A hallucinated 99 in one dimension is dropped, so _compute_base_score takes
+    # its fallback path (the model's own base_score) instead of weight-averaging it.
+    dims = {**_FULL_DIMS, "domain_fit": 99}
+    client = _api_response(base_score=73, dimension_scores=dims)
+    result = _score_one(client, _posting())
+    assert result["base_score"] == 73
 
 
 def test_score_one_passes_cache_control_on_system_prompt():
