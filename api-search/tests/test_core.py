@@ -243,3 +243,48 @@ def test_append_postings_does_not_refilter_existing(env):
     assert result["added"] == 1
     assert result["disqualified"] == 0
     assert [p["url"] for p in _read_postings(env, "linkedin", "2026-06-01")] == ["old", "new"]
+
+
+# ── append_postings disqualified sidecar ──────────────────────────────────────
+
+
+def _read_sidecar(env, platform, batch_date):
+    return json.loads((env / "jobs" / f"{platform}-{batch_date}.disqualified.json").read_text())
+
+
+def test_append_postings_logs_drops_to_sidecar_with_matched_rule(env):
+    batch = [
+        {"url": "u1", "title": "Principal Engineer"},
+        {"url": "u2", "title": "Principal Engineer Internship"},
+    ]
+    append_postings("research", batch, batch_date="2026-06-01")
+    sidecar = _read_sidecar(env, "research", "2026-06-01")
+    assert sidecar["platform"] == "research"
+    assert sidecar["search_date"] == "2026-06-01"
+    assert sidecar["total_dropped"] == 1
+    [dropped] = sidecar["postings"]
+    assert dropped["url"] == "u2"
+    assert dropped["title"] == "Principal Engineer Internship"  # full posting preserved
+    assert "internship" in dropped["matched_rule"]  # "category: value" audit trail
+
+
+def test_append_postings_sidecar_merges_across_appends(env):
+    append_postings(
+        "research", [{"url": "u2", "title": "Software internship program"}], batch_date="2026-06-01"
+    )
+    append_postings(
+        "research",
+        [
+            {"url": "u2", "title": "Software internship program"},  # dup → kept once
+            {"url": "u3", "title": "Engineering internship"},
+        ],
+        batch_date="2026-06-01",
+    )
+    sidecar = _read_sidecar(env, "research", "2026-06-01")
+    assert sidecar["total_dropped"] == 2
+    assert [p["url"] for p in sidecar["postings"]] == ["u2", "u3"]
+
+
+def test_append_postings_writes_no_sidecar_when_clean(env):
+    append_postings("linkedin", [{"url": "u1", "title": "Staff Engineer"}], batch_date="2026-06-01")
+    assert not (env / "jobs" / "linkedin-2026-06-01.disqualified.json").exists()

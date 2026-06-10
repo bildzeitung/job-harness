@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from harness_db.disqualifiers import load_prefilter, prefilter_disqualifies
+from harness_db.disqualifiers import load_prefilter, prefilter_disqualifies, prefilter_match
 
 from api_search.candidate import load_candidate_summary, seniority_keywords_from_summary
 from api_search.filters import is_remote, is_senior
@@ -183,12 +183,19 @@ def append_postings(
     empty, so the first run behaves like a plain write.
 
     Each **incoming** posting is run through the hard prefilter
-    (``prefilter_disqualifies``) before the merge, so an MCP searcher can write a
+    (``prefilter_match``) before the merge, so an MCP searcher can write a
     completely unfiltered batch and the canonical file still contains zero
     prefilter-disqualified postings. Postings already in the file are not
     re-filtered — they passed when first appended. The prefilter is applied to
     ``title`` + ``location_note`` + ``description_summary`` + ``job_description_text``
     (the same fields ``run()`` combines).
+
+    Dropped postings are not discarded silently: each is appended (with a
+    ``matched_rule`` field naming the firing rule) to the audit sidecar
+    ``{platform}-{date}.disqualified.json`` next to the canonical file, so an
+    over-firing keyword can be traced and the posting recovered. The sidecar's
+    name never collides with a consolidator platform file, so it is never
+    ingested.
 
     Returns counts: ``{"path", "added", "total", "skipped", "disqualified"}``
     where ``added`` is the number of new URLs written, ``skipped`` the
@@ -208,17 +215,21 @@ def append_postings(
 
     prefilter = load_prefilter()
     kept_new: list[dict[str, Any]] = []
-    disqualified = 0
+    dropped: list[dict[str, Any]] = []
     for p in new_postings:
         title = p.get("title", "") or ""
         combined = " ".join(
             str(p.get(k, "") or "")
             for k in ("title", "location_note", "description_summary", "job_description_text")
         )
-        if prefilter_disqualifies(title, combined, prefilter):
-            disqualified += 1
+        rule = prefilter_match(title, combined, prefilter)
+        if rule is not None:
+            dropped.append({**p, "matched_rule": rule})
             continue
         kept_new.append(p)
+
+    if dropped:
+        _append_sidecar(out_path, platform, batch_date, dropped)
 
     existing_urls = {p.get("url") for p in existing if p.get("url")}
     merged = dedup_by_url(existing + kept_new)
@@ -229,5 +240,37 @@ def append_postings(
         "added": added,
         "total": len(merged),
         "skipped": len(kept_new) - added,
-        "disqualified": disqualified,
+        "disqualified": len(dropped),
     }
+
+
+def _append_sidecar(
+    out_path: Path, platform: str, batch_date: str, dropped: list[dict[str, Any]]
+) -> Path:
+    """Merge prefilter-dropped postings into ``{platform}-{date}.disqualified.json``.
+
+    Same merge semantics as the canonical file: existing records win on a URL
+    collision, an unreadable file is treated as empty.
+    """
+    sidecar = out_path.with_name(f"{platform}-{batch_date}.disqualified.json")
+    existing: list[dict[str, Any]] = []
+    if sidecar.exists():
+        try:
+            loaded = json.loads(sidecar.read_text())
+            postings = loaded.get("postings") if isinstance(loaded, dict) else None
+            existing = postings if isinstance(postings, list) else []
+        except (json.JSONDecodeError, OSError):
+            existing = []
+    merged = dedup_by_url(existing + dropped)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "search_date": batch_date,
+                "platform": platform,
+                "total_dropped": len(merged),
+                "postings": merged,
+            },
+            indent=2,
+        )
+    )
+    return sidecar
