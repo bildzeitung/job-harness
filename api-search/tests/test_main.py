@@ -26,6 +26,23 @@ def test_append_from_file_merges_and_consumes_staging(env, capsys):
     assert "[API-SEARCH:APPEND:LINKEDIN] +2 new" in capsys.readouterr().out
 
 
+def test_append_reports_disqualified_count(env, monkeypatch, capsys):
+    # An unfiltered batch with a prefilter-matching posting: the canonical file
+    # stays prefilter-clean and the printed line surfaces the disqualified count.
+    batch = json.dumps(
+        [{"url": "u1", "title": "Staff Engineer"}, {"url": "u2", "title": "Engineer Internship"}]
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(batch))
+    rc = main(["append", "research", "--date", "2026-06-02"])
+    assert rc == 0
+    canonical = json.loads((env / "jobs" / "research-2026-06-02.json").read_text())
+    assert [p["url"] for p in canonical["postings"]] == ["u1"]
+    assert (
+        "[API-SEARCH:APPEND:RESEARCH] +1 new (0 dup/blank, 1 disqualified)"
+        in capsys.readouterr().out
+    )
+
+
 def test_append_accepts_payload_object_from_stdin(env, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"postings": [{"url": "u9"}]})))
     rc = main(["append", "indeed", "--date", "2026-06-02"])

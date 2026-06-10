@@ -96,7 +96,8 @@ def _append(argv: list[str]) -> int:
 
     print(
         f"[API-SEARCH:APPEND:{platform.upper()}] +{result['added']} new "
-        f"({result['skipped']} dup/blank) — {result['total']} total in {result['path']}",
+        f"({result['skipped']} dup/blank, {result['disqualified']} disqualified) — "
+        f"{result['total']} total in {result['path']}",
         flush=True,
     )
     return 0

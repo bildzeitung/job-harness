@@ -197,3 +197,49 @@ def test_append_postings_requires_job_data_root(monkeypatch):
     monkeypatch.delenv("JOB_DATA_ROOT", raising=False)
     with pytest.raises(RuntimeError, match="JOB_DATA_ROOT"):
         append_postings("linkedin", [])
+
+
+# ── append_postings prefilter (A1) ────────────────────────────────────────────
+
+
+def test_append_postings_drops_prefilter_disqualified(env):
+    # "internship" is a default prefilter title_term; the geography phrase is a
+    # default description_phrase. Both incoming postings must be dropped while
+    # the clean one survives, and counted under `disqualified` not `skipped`.
+    batch = [
+        {"url": "u1", "title": "Principal Engineer"},
+        {"url": "u2", "title": "Principal Engineer Internship"},
+        {
+            "url": "u3",
+            "title": "Staff Engineer",
+            "description_summary": "Remote. US citizens only.",
+        },
+    ]
+    result = append_postings("research", batch, batch_date="2026-06-01")
+    assert result["added"] == 1
+    assert result["disqualified"] == 2
+    assert result["skipped"] == 0
+    assert [p["url"] for p in _read_postings(env, "research", "2026-06-01")] == ["u1"]
+
+
+def test_append_postings_does_not_refilter_existing(env):
+    # Seed a file that already contains a posting which would match the prefilter
+    # (simulating one appended before a rule existed). It must be preserved — only
+    # incoming postings are filtered.
+    (env / "jobs").mkdir(parents=True, exist_ok=True)
+    (env / "jobs" / "linkedin-2026-06-01.json").write_text(
+        json.dumps(
+            {
+                "search_date": "2026-06-01",
+                "platform": "linkedin",
+                "total_found": 1,
+                "postings": [{"url": "old", "title": "Principal Engineer Internship"}],
+            }
+        )
+    )
+    result = append_postings(
+        "linkedin", [{"url": "new", "title": "Staff Engineer"}], batch_date="2026-06-01"
+    )
+    assert result["added"] == 1
+    assert result["disqualified"] == 0
+    assert [p["url"] for p in _read_postings(env, "linkedin", "2026-06-01")] == ["old", "new"]

@@ -182,8 +182,17 @@ def append_postings(
     batch by URL (existing wins). A missing or unreadable file is treated as
     empty, so the first run behaves like a plain write.
 
-    Returns counts: ``{"path", "added", "total", "skipped"}`` where ``added`` is
-    the number of new URLs written and ``skipped`` the duplicates/blank-URL drops.
+    Each **incoming** posting is run through the hard prefilter
+    (``prefilter_disqualifies``) before the merge, so an MCP searcher can write a
+    completely unfiltered batch and the canonical file still contains zero
+    prefilter-disqualified postings. Postings already in the file are not
+    re-filtered — they passed when first appended. The prefilter is applied to
+    ``title`` + ``location_note`` + ``description_summary`` + ``job_description_text``
+    (the same fields ``run()`` combines).
+
+    Returns counts: ``{"path", "added", "total", "skipped", "disqualified"}``
+    where ``added`` is the number of new URLs written, ``skipped`` the
+    duplicate/blank-URL drops, and ``disqualified`` the prefilter drops.
     """
     batch_date = batch_date or date.today().isoformat()
     out_path = _batch_path(platform, batch_date)
@@ -197,13 +206,28 @@ def append_postings(
         except (json.JSONDecodeError, OSError):
             existing = []
 
+    prefilter = load_prefilter()
+    kept_new: list[dict[str, Any]] = []
+    disqualified = 0
+    for p in new_postings:
+        title = p.get("title", "") or ""
+        combined = " ".join(
+            str(p.get(k, "") or "")
+            for k in ("title", "location_note", "description_summary", "job_description_text")
+        )
+        if prefilter_disqualifies(title, combined, prefilter):
+            disqualified += 1
+            continue
+        kept_new.append(p)
+
     existing_urls = {p.get("url") for p in existing if p.get("url")}
-    merged = dedup_by_url(existing + list(new_postings))
+    merged = dedup_by_url(existing + kept_new)
     added = sum(1 for p in merged if p.get("url") not in existing_urls)
     _write_batch(out_path, platform, batch_date, merged)
     return {
         "path": str(out_path),
         "added": added,
         "total": len(merged),
-        "skipped": len(new_postings) - added,
+        "skipped": len(kept_new) - added,
+        "disqualified": disqualified,
     }
