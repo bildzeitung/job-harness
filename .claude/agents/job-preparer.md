@@ -213,11 +213,11 @@ Write the tailored resume YAML with the Write tool to:
 Set settings.render_command.pdf_path and typst_path to the matching absolute
 {output_dir}/{CandidateName}_{SanitizedCompany}_Resume.{pdf,typ} paths.
 Skip the cover letter — this pipeline renders cover letters separately.
-job_description_text: {job_description_text}   # omit this line if unavailable
+job_description_text: {job_description_text}   # always supply — see below
 company_notes: {company_notes}                 # omit this line if no notes
 ```
 
-`job_description_text` is pre-fetched during scoring (by `scoring_module`) and stored in the DB — pass it inline so resume-tailor skips the WebFetch. Omit that line if the field is empty (resume-tailor will fetch the URL itself). Omit `company_notes` if no companies row exists for this company or its notes are empty.
+`job_description_text` is pre-fetched during scoring (by `scoring_module`) and stored in the DB — pass it inline. **Always supply it yourself:** if the DB field is empty, fetch the posting URL with your own WebFetch tool and pass the extracted text. Only if that fetch *also* fails, replace the line with `job_description_text: UNAVAILABLE — could not fetch {url}` so resume-tailor knows the posting text is missing, and record the failure in the Final Report. Omit `company_notes` if no companies row exists for this company or its notes are empty.
 
 Wait for all spawned agents to return. Note the exact YAML path each reports.
 

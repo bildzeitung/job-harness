@@ -1,7 +1,7 @@
 ---
 name: "resume-evaluator"
 description: "Evaluates and improves the resume/CV — achievement reframing, 10-second scan test, and red flag detection."
-tools: Read, Edit, NotebookEdit, Write, Bash, CronCreate, CronDelete, CronList, EnterWorktree, ExitWorktree, Monitor, PushNotification, RemoteTrigger, ScheduleWakeup, Skill, TaskCreate, TaskGet, TaskList, TaskUpdate, ToolSearch
+tools: Read, Edit, Write, Bash, ToolSearch
 model: opus
 color: green
 memory: project

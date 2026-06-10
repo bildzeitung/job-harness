@@ -1,7 +1,7 @@
 ---
 name: "cover-letter-creator"
 description: "When requested for a cover letter."
-tools: Read, Edit, NotebookEdit, Write, Bash, CronCreate, CronDelete, CronList, EnterWorktree, ExitWorktree, Monitor, PushNotification, RemoteTrigger, ScheduleWakeup, Skill, TaskCreate, TaskGet, TaskList, TaskUpdate, ToolSearch
+tools: Read, Edit, Write, Bash, ToolSearch
 model: opus
 color: purple
 memory: project

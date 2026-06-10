@@ -1,7 +1,7 @@
 ---
 name: "resume-tailor"
 description: "Customizes the resume/CV for a specific job posting — ATS bypass, gap analysis, competitive edge, and cover letter."
-tools: Read, Edit, NotebookEdit, Write, Bash, CronCreate, CronDelete, CronList, EnterWorktree, ExitWorktree, Monitor, PushNotification, RemoteTrigger, ScheduleWakeup, Skill, TaskCreate, TaskGet, TaskList, TaskUpdate, ToolSearch
+tools: Read, Edit, Write, Bash, ToolSearch, WebFetch
 model: opus
 color: blue
 memory: project
