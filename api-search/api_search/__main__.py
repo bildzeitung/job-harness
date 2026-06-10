@@ -15,7 +15,12 @@ def _usage() -> str:
         "      $JOB_DATA_ROOT/jobs/<platform>-<date>.json, deduped by URL.\n"
         "  or: python -m api_search inspect FILE\n"
         "      print the shape, posting count, and per-field coverage of a\n"
-        "      jobs/<platform>-<date>.json file (no hand-rolled json one-liners)."
+        "      jobs/<platform>-<date>.json file (no hand-rolled json one-liners).\n"
+        "  or: python -m api_search probe-slugs [<source> ...]\n"
+        "      probe every configured board slug of the slug-based sources\n"
+        "      (default: greenhouse, lever, ashby, workable, recruitee) and report\n"
+        "      OK/EMPTY/GONE/ERROR per slug. Exits 1 if any are GONE. Report-only —\n"
+        "      relocating or removing slugs stays a human decision."
     )
 
 
@@ -103,12 +108,32 @@ def _append(argv: list[str]) -> int:
     return 0
 
 
+def _probe_slugs(argv: list[str]) -> int:
+    from api_search.probe import GONE, probe_slugs
+
+    try:
+        results = probe_slugs(argv[1:] or None)
+    except ValueError as e:
+        print(f"[API-SEARCH:PROBE] {e}", file=sys.stderr)
+        return 2
+
+    counts: dict[str, int] = {}
+    for r in results:
+        print(f"[API-SEARCH:PROBE] {r.source}/{r.slug}: {r.status} ({r.detail})", flush=True)
+        counts[r.status] = counts.get(r.status, 0) + 1
+    summary = ", ".join(f"{counts.get(s, 0)} {s}" for s in ("OK", "EMPTY", "GONE", "ERROR"))
+    print(f"[API-SEARCH:PROBE] {len(results)} slugs probed — {summary}", flush=True)
+    return 1 if counts.get(GONE) else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "append":
         return _append(argv)
     if argv and argv[0] == "inspect":
         return _inspect(argv)
+    if argv and argv[0] == "probe-slugs":
+        return _probe_slugs(argv)
     if not argv or argv[0] not in SOURCES:
         print(_usage(), file=sys.stderr)
         return 2
