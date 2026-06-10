@@ -1,7 +1,7 @@
 ---
 name: "job-seeker-indeed"
 description: "Searches Indeed for remote, Canada-eligible senior engineering roles using the Indeed MCP server. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_Indeed__get_job_details, ToolSearch, mcp__sqlite__write_query
+tools: Read, Write, Bash, mcp__claude_ai_Indeed__search_jobs, mcp__claude_ai_Indeed__get_job_details, ToolSearch
 model: haiku
 color: green
 ---
@@ -31,12 +31,7 @@ All search inputs come from configuration — nothing here is hard-coded.
 - `requirements.employment` — allowed employment types.
 - `seniority_keywords` — the posting title must match one of these.
 
-**Hard exclusions — early disqualification** (from `$JOB_DATA_ROOT/disqualifiers.yaml`, the single user-editable source of truth shared with `job-preparer` and the scorer): read that file's `prefilter` section and discard any posting that matches, using the same rules `job-preparer` applies (all case-insensitive):
-- `description_phrases` — any phrase appears in the title or description.
-- `title_terms` — any term appears in the title.
-- `title_terms_unless_senior` — any term appears in the title, UNLESS the title also contains a `seniority_exceptions` term.
-
-Discard matches **before** writing them out, so disqualified noise never enters the pipeline. Do not invent exclusions beyond the configured lists — when eligibility is genuinely ambiguous (no matching phrase), keep the posting for the scorer.
+**Hard disqualifiers** are data-driven, per-user, stored in the harness DB, and enforced by `api_search append` when you merge your batch — you do not read or apply them. Do not invent exclusions; when eligibility is ambiguous, keep the posting for the scorer.
 
 ## Search Strategy
 
@@ -52,22 +47,6 @@ For each search result, call `mcp__claude_ai_Indeed__get_job_details` with the j
 
 Aim for **15–25 unique postings** that pass the filters.
 
-## Write Company Records to DB
-
-Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
-
-For each unique company in the verified postings list, register it in the `companies` table. The `country_code: "CA"` search establishes Canada eligibility at the job level. Escape single quotes in company names by doubling them (`'` → `''`).
-
-```sql
-INSERT INTO companies (name, canada_confirmed, last_seen_date)
-VALUES ('{company}', 1, '{YYYY-MM-DD}')
-ON CONFLICT(name) DO UPDATE SET
-  canada_confirmed = MAX(COALESCE(companies.canada_confirmed, 0), 1),
-  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
-```
-
-One call per unique company. Print: `[INDEED] Wrote {N} company records to DB`
-
 ## Output
 
 Hand your verified postings to the `api_search` module — it does the dedup-by-URL merge and writes the canonical consolidator file, so you do **not** assemble, merge, or post-process that file yourself, and you write **no** one-off Python to do it.
@@ -80,7 +59,12 @@ Hand your verified postings to the `api_search` module — it does the dedup-by-
    . "$PROJECT_ROOT/venv/bin/activate"
    python -m api_search append indeed --from "$JOB_DATA_ROOT/jobs/indeed-{YYYY-MM-DD}.batch.json"
    ```
-   This dedups your batch (and any existing `indeed-{YYYY-MM-DD}.json`) by URL, writes the consolidator-ready file, and consumes the staging file. It prints `[API-SEARCH:APPEND:INDEED] +{N} new ({skipped} dup/blank) — {total} total in {path}`.
+   This dedups your batch (and any existing `indeed-{YYYY-MM-DD}.json`) by URL, **applies the hard prefilter** to your incoming postings, writes the consolidator-ready file, and consumes the staging file. It prints `[API-SEARCH:APPEND:INDEED] +{N} new ({skipped} dup/blank, {disqualified} disqualified) — {total} total in {path}`.
+3. Register the hiring companies from the canonical file in one command (the `country_code: "CA"` search establishes Canada eligibility, so this ratchets `canada_confirmed`; the policy lives in `harness-db`):
+   ```bash
+   harness-db companies seen --platform indeed "$JOB_DATA_ROOT/jobs/indeed-$(date +%F).json"
+   ```
+   Forward its `[COMPANIES:SEEN] …` line.
 
 Each posting object:
 

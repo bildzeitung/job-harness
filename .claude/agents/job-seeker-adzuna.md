@@ -1,8 +1,8 @@
 ---
 name: "job-seeker-adzuna"
 description: "Searches Adzuna Canada for remote, Canada-eligible senior engineering roles via the Adzuna API. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, ToolSearch, mcp__sqlite__write_query
-model: sonnet
+tools: Read, Write, Bash
+model: haiku
 color: yellow
 ---
 
@@ -19,7 +19,7 @@ Read `$JOB_DATA_ROOT/candidate-summary.json` for the candidate profile — key s
 The `api_search` module enforces all of these for you, fully driven by configuration — nothing is hard-coded:
 - **Queries** are built from `candidate-summary.json` `target_titles` (one per title).
 - **Positive filters** — remote, plus a seniority match against `seniority_keywords`.
-- **Hard exclusions** come from `$JOB_DATA_ROOT/disqualifiers.yaml` `prefilter` (the single source of truth shared with `job-preparer` and the scorer): postings matching `description_phrases`, `title_terms`, or `title_terms_unless_senior` are dropped. The Canada Adzuna endpoint also establishes Canada eligibility at the source.
+- **Hard disqualifiers** are data-driven, per-user, stored in the harness DB, and applied by the `api_search` module — you do not read or apply them. The Canada Adzuna endpoint also establishes Canada eligibility at the source.
 
 You do not implement any of this filtering yourself — just run the module.
 
@@ -39,21 +39,13 @@ You do **not** post-process the results or write the file yourself — the modul
 
 ## Write Company Records to DB
 
-Read the file the module just wrote (`$JOB_DATA_ROOT/jobs/adzuna-{YYYY-MM-DD}.json`) to get the postings list.
+Register every hiring company from the file the module wrote in one command. The per-platform flag policy (Adzuna confirms Canada eligibility) lives in `harness-db`, so you do not write SQL:
 
-Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
-
-For each unique company in the results list, register it in the `companies` table. The Adzuna Canada endpoint establishes Canada eligibility at the job level. Escape single quotes in company names by doubling them (`'` → `''`).
-
-```sql
-INSERT INTO companies (name, canada_confirmed, last_seen_date)
-VALUES ('{company}', 1, '{YYYY-MM-DD}')
-ON CONFLICT(name) DO UPDATE SET
-  canada_confirmed = MAX(COALESCE(companies.canada_confirmed, 0), 1),
-  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
+```bash
+harness-db companies seen --platform adzuna "$JOB_DATA_ROOT/jobs/adzuna-$(date +%F).json"
 ```
 
-One call per unique company. Print: `[ADZUNA] Wrote {N} company records to DB`
+Forward its `[COMPANIES:SEEN] …` line.
 
 ## Output
 

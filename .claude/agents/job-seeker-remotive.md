@@ -1,8 +1,8 @@
 ---
 name: "job-seeker-remotive"
 description: "Searches the Remotive, Himalayas, and We Work Remotely remote-jobs boards for remote senior engineering roles via the api_search module's remotive, himalayas, and wwr sources. Saves results to temp files for the job-seeker orchestrator."
-tools: Read, Write, Bash, ToolSearch, mcp__sqlite__write_query
-model: sonnet
+tools: Read, Write, Bash
+model: haiku
 color: green
 ---
 
@@ -18,7 +18,7 @@ The `api_search` module enforces all of these for you, fully driven by configura
 - **Queries / feeds** come from configuration: Remotive runs one `search=` query per `candidate-summary.json` `target_title`; Himalayas pulls the newest `limit` postings from its single feed; We Work Remotely parses the configured RSS category feeds.
 - **Positive filters** — remote (a no-op on these remote-only boards) plus a seniority match against `seniority_keywords`.
 - **Canada eligibility** — Himalayas and We Work Remotely carry an explicit region/restriction per posting, and the module drops any that exclude Canada (e.g. "USA Only", "Europe Only") **at the source**. Remotive is filtered the same way on its `candidate_required_location`.
-- **Hard exclusions** come from `$JOB_DATA_ROOT/disqualifiers.yaml` `prefilter` (the single source of truth shared with `job-preparer` and the scorer): postings matching `description_phrases`, `title_terms`, or `title_terms_unless_senior` are dropped.
+- **Hard disqualifiers** are data-driven, per-user, stored in the harness DB, and applied by the `api_search` module — you do not read or apply them.
 
 These are **global remote** boards: the Canada-eligibility filter keeps only roles a Canadian may take, but it does not confirm a Canada-based office. Final eligibility is handled downstream by the scorer and `job-preparer`, exactly as for research-sourced global-remote postings.
 
@@ -44,22 +44,15 @@ Each run prints `[API-SEARCH:{SOURCE}] Found {N} postings — saved to {path}`. 
 
 ## Write Company Records to DB
 
-Read all three files the module wrote (`remotive-{YYYY-MM-DD}.json`, `himalayas-{YYYY-MM-DD}.json`, and `wwr-{YYYY-MM-DD}.json`) to get the postings.
+Register every hiring company from all three files in **one** command. The per-platform flag policy (these boards confirm remote only — never Canada — and the `notes` board label is taken from each file's platform) lives in `harness-db`, so you do not write SQL:
 
-Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
-
-For each unique company across all three files, register it in the `companies` table. These boards confirm **remote** but not a Canada-based office, so set `remote_confirmed = 1` only — never touch `canada_confirmed`. Escape single quotes in company names by doubling them (`'` → `''`).
-
-```sql
-INSERT INTO companies (name, remote_confirmed, notes, last_seen_date)
-VALUES ('{company}', 1, 'Hiring on {Remotive|Himalayas|We Work Remotely} (see posting URLs)', '{YYYY-MM-DD}')
-ON CONFLICT(name) DO UPDATE SET
-  remote_confirmed = MAX(COALESCE(companies.remote_confirmed, 0), 1),
-  notes = CASE WHEN companies.notes IS NULL OR companies.notes = '' THEN excluded.notes ELSE companies.notes END,
-  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
+```bash
+D=$(date +%F)
+harness-db companies seen --platform remotive \
+  "$JOB_DATA_ROOT"/jobs/{remotive,himalayas,wwr}-"$D".json
 ```
 
-Set the `notes` board label from which file the company came from. One call per unique company. Print: `[REMOTIVE] Wrote {N} company records to DB`
+Forward its `[COMPANIES:SEEN] …` line.
 
 ## Output
 

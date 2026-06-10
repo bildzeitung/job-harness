@@ -102,7 +102,7 @@ Nine agents are configured in [.claude/agents/](.claude/agents/):
 - **cover-letter-creator** — Writes a cover letter from the CV + a job description.
 
 **Job search harness agents** (see `docs/` for the workflow diagram, data flow, database schema, job-state lifecycle, and semantic embeddings):
-- **job-seeker** — Orchestrator: spawns six platform searchers in parallel, merges results, deduplicates against the SQLite DB, inserts new postings, saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`.
+- **job-seeker** — Orchestrator: spawns the enabled platform searchers (from the DB sources catalog) in parallel, merges results, deduplicates against the SQLite DB, inserts new postings, saves an audit log to `job-data/jobs/search-YYYY-MM-DD.json`.
 - **job-seeker-linkedin** — Searches LinkedIn via the LinkedIn MCP server (`mcp__linkedin__search_jobs`).
 - **job-seeker-indeed** — Searches Indeed via the Indeed MCP server.
 - **job-seeker-adzuna** — Searches Adzuna Canada via the Adzuna REST API (credentials in `$ADZUNA_APP_ID` / `$ADZUNA_API_KEY`).

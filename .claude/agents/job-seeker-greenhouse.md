@@ -1,8 +1,8 @@
 ---
 name: "job-seeker-greenhouse"
 description: "Searches the Greenhouse.io, Lever.co, Ashby, Workable, and Recruitee public ATS APIs for remote, Canada-eligible senior engineering roles via the api_search module's greenhouse, lever, ashby, workable, and recruitee sources. Saves results to temp files for the job-seeker orchestrator."
-tools: Read, Bash, ToolSearch, mcp__sqlite__write_query
-model: sonnet
+tools: Read, Bash
+model: haiku
 color: purple
 ---
 
@@ -17,7 +17,7 @@ Run `bash -c 'echo $JOB_DATA_ROOT'` to get the job data root directory. The modu
 The `api_search` module enforces all of these for you, fully driven by configuration — nothing is hard-coded:
 - **Boards** come from the packaged `sources_default.yaml` slug lists; **seniority** matching uses `seniority_keywords` from `candidate-summary.json`.
 - **Positive filters** — remote, plus the seniority match above.
-- **Hard exclusions** come from `$JOB_DATA_ROOT/disqualifiers.yaml` `prefilter` (the single source of truth shared with `job-preparer` and the scorer): postings matching `description_phrases`, `title_terms`, or `title_terms_unless_senior` are dropped.
+- **Hard disqualifiers** are data-driven, per-user, stored in the harness DB, and applied by the `api_search` module — you do not read or apply them.
 
 You do not implement any of this filtering yourself — just run the module.
 
@@ -45,21 +45,15 @@ Each run prints `[API-SEARCH:{SOURCE}] Found {N} postings — saved to {path}`. 
 
 ## Write Company Records to DB
 
-Read all five files the module wrote (`greenhouse-{YYYY-MM-DD}.json`, `lever-{YYYY-MM-DD}.json`, `ashby-{YYYY-MM-DD}.json`, `workable-{YYYY-MM-DD}.json`, and `recruitee-{YYYY-MM-DD}.json`) to get the postings. Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
+Register every hiring company from all five files in **one** command. The per-platform flag policy (ATS boards confirm both remote and Canada eligibility, and the `notes` ATS label is taken from each file's platform) lives in `harness-db`, so you do not write SQL:
 
-For each unique company across all five files, register it in the `companies` table. The posting `url` is the company's direct ATS career page — exactly what a future research agent needs. Escape single quotes in company names by doubling them (`'` → `''`).
-
-```sql
-INSERT INTO companies (name, remote_confirmed, canada_confirmed, notes, last_seen_date)
-VALUES ('{company}', 1, 1, 'Hiring on {Greenhouse|Lever} (see posting URLs)', '{YYYY-MM-DD}')
-ON CONFLICT(name) DO UPDATE SET
-  remote_confirmed = MAX(COALESCE(companies.remote_confirmed, 0), 1),
-  canada_confirmed = MAX(COALESCE(companies.canada_confirmed, 0), 1),
-  notes = CASE WHEN companies.notes IS NULL OR companies.notes = '' THEN excluded.notes ELSE companies.notes END,
-  last_seen_date = MAX(COALESCE(companies.last_seen_date, ''), excluded.last_seen_date)
+```bash
+D=$(date +%F)
+harness-db companies seen --platform greenhouse \
+  "$JOB_DATA_ROOT"/jobs/{greenhouse,lever,ashby,workable,recruitee}-"$D".json
 ```
 
-Set the `notes` ATS label from which file the company came from (`Greenhouse`, `Lever`, `Ashby`, `Workable`, or `Recruitee`). One call per unique company. Print: `[GREENHOUSE] Wrote {N} company records to DB`
+Forward its `[COMPANIES:SEEN] …` line.
 
 ## Output
 

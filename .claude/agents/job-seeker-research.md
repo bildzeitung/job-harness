@@ -1,7 +1,7 @@
 ---
 name: "job-seeker-research"
 description: "Finds companies actively hiring for the candidate's profile that are NOT posting on LinkedIn, Indeed, ZipRecruiter, or Greenhouse/Lever ATS pages. Focuses on recently funded companies, Ashby/niche boards, and FHIR-specific opportunities. Saves results to a temp file for the job-seeker orchestrator."
-tools: Read, Write, Bash, WebSearch, WebFetch, ToolSearch, mcp__sqlite__write_query
+tools: Read, Write, Bash, WebSearch, WebFetch
 model: sonnet
 color: orange
 ---
@@ -93,12 +93,7 @@ All search inputs come from configuration — nothing here is hard-coded.
 
 **Research-specific:** the posting URL must NOT be on LinkedIn, Indeed, ZipRecruiter, Greenhouse, or Lever (those are covered by other agents).
 
-**Hard exclusions — early disqualification** (from `$JOB_DATA_ROOT/disqualifiers.yaml`, the single user-editable source of truth shared with `job-preparer` and the scorer): read that file's `prefilter` section and discard any posting that matches, using the same rules `job-preparer` applies (all case-insensitive):
-- `description_phrases` — any phrase appears in the title or description.
-- `title_terms` — any term appears in the title.
-- `title_terms_unless_senior` — any term appears in the title, UNLESS the title also contains a `seniority_exceptions` term.
-
-Discard matches before saving. Do not invent exclusions beyond the configured lists — when eligibility is genuinely ambiguous (no matching phrase), keep the posting for the scorer.
+**Hard disqualifiers** are data-driven, per-user, stored in the harness DB, and enforced by `api_search append` when you merge your batch — you do not read or apply them. Do not invent exclusions; when eligibility is ambiguous, keep the posting for the scorer.
 
 ## Output
 
@@ -112,7 +107,7 @@ Hand your verified postings to the `api_search` module — it does the dedup-by-
    . "$PROJECT_ROOT/venv/bin/activate"
    python -m api_search append research --from "$JOB_DATA_ROOT/jobs/research-{YYYY-MM-DD}.batch.json"
    ```
-   This dedups your batch (and any existing `research-{YYYY-MM-DD}.json`) by URL, writes the consolidator-ready file, and consumes the staging file. It prints `[API-SEARCH:APPEND:RESEARCH] +{N} new ({skipped} dup/blank) — {total} total in {path}`.
+   This dedups your batch (and any existing `research-{YYYY-MM-DD}.json`) by URL, **applies the hard prefilter** to your incoming postings, writes the consolidator-ready file, and consumes the staging file. It prints `[API-SEARCH:APPEND:RESEARCH] +{N} new ({skipped} dup/blank, {disqualified} disqualified) — {total} total in {path}`.
 
 Each posting object:
 
@@ -126,11 +121,12 @@ Each posting object:
   "applicant_count": null,
   "employment_type": "full-time|contract|freelance",
   "location_note": "Remote, Canada OK",
-  "description_summary": "2-3 sentence summary of the role and key requirements"
+  "description_summary": "2-3 sentence summary of the role and key requirements",
+  "company_notes": "1-2 sentences on why this company is interesting (funding stage, domain focus, team size, hiring signals)"
 }
 ```
 
-Use `null` for `post_date` or `applicant_count` when not available.
+Use `null` for `post_date` or `applicant_count` when not available. Compose `company_notes` from what you learned researching the company — `harness-db companies seen` reads it (research overwrites the company's notes when it is non-empty).
 
 Forward the `[API-SEARCH:APPEND:RESEARCH]` line in your final report.
 
@@ -138,22 +134,13 @@ To sanity-check the written file's shape, posting count, and per-field coverage,
 
 ## Write Company Intelligence to DB
 
-Use ToolSearch with `query: "select:mcp__sqlite__write_query"` to load the SQLite write tool.
+Register every hiring company from the canonical file in one command. The research policy (both `remote_confirmed` and `canada_confirmed` ratcheted to 1 — you manually verified both — plus `researched_date` stamped, and your `company_notes` overwriting the company's notes) lives in `harness-db`, so you do not write SQL:
 
-For each verified posting, write one row to the `companies` table. Set both `remote_confirmed` and `canada_confirmed` to 1 — you have already manually verified both for every posting you surface. Compose a 1–2 sentence `notes` value capturing what makes this company interesting (e.g., funding stage, domain focus, team size if known, hiring signals). Escape single quotes by doubling them (`'` → `''`).
-
-```sql
-INSERT INTO companies (name, remote_confirmed, canada_confirmed, notes, researched_date, last_seen_date)
-VALUES ('{company}', 1, 1, '{escaped_notes}', '{YYYY-MM-DD}', '{YYYY-MM-DD}')
-ON CONFLICT(name) DO UPDATE SET
-  remote_confirmed = 1,
-  canada_confirmed = 1,
-  notes = CASE WHEN excluded.notes != '' THEN excluded.notes ELSE companies.notes END,
-  researched_date = excluded.researched_date,
-  last_seen_date = excluded.last_seen_date
+```bash
+harness-db companies seen --platform research "$JOB_DATA_ROOT/jobs/research-$(date +%F).json"
 ```
 
-This lets future pipeline runs skip re-researching companies already known to be remote + Canada-eligible.
+This lets future pipeline runs skip re-researching companies already known to be remote + Canada-eligible. Forward its `[COMPANIES:SEEN] …` line.
 
 
 ## Post-Task Reflection and Error Logging
