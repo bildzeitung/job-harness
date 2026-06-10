@@ -42,6 +42,7 @@ __all__ = [
     "load_disqualifiers",
     "load_prefilter",
     "prefilter_disqualifies",
+    "prefilter_match",
     "PrefilterRuleView",
     "ScoringBlockView",
     "list_prefilter_rules",
@@ -171,8 +172,8 @@ def _phrase_regex(phrase: str) -> re.Pattern[str]:
     return re.compile(prefix + re.escape(phrase) + suffix, re.IGNORECASE)
 
 
-def prefilter_disqualifies(title: str, text: str, prefilter: dict[str, Any]) -> bool:
-    """True if a posting matches any hard prefilter rule (case-insensitive).
+def prefilter_match(title: str, text: str, prefilter: dict[str, Any]) -> str | None:
+    """The first hard prefilter rule a posting matches, as ``"category: value"`` — or None.
 
     Implements the canonical semantics shared by every source and by
     ``job-preparer``. Matching is word-bounded (see :func:`_phrase_regex`) so
@@ -183,25 +184,34 @@ def prefilter_disqualifies(title: str, text: str, prefilter: dict[str, Any]) -> 
     * ``title_terms_unless_senior`` — any term appears in the title, UNLESS the
       title also contains a ``seniority_exceptions`` term (e.g. "senior",
       "staff", "principal" — seniority qualifiers, not contradictions).
+
+    Returning the firing rule (e.g. ``"description_phrases: web3"``) makes every
+    drop auditable — the ``api_search`` sidecar logs and prefilter reports record
+    it so an over-firing rule can be traced to its exact keyword.
     """
     combined = f"{title} {text}"
 
     for phrase in prefilter.get("description_phrases", []):
         if _phrase_regex(phrase).search(combined):
-            return True
+            return f"description_phrases: {phrase}"
 
     for term in prefilter.get("title_terms", []):
         if _phrase_regex(term).search(title):
-            return True
+            return f"title_terms: {term}"
 
     seniority_exceptions = prefilter.get("seniority_exceptions", [])
     has_seniority = any(_phrase_regex(s).search(title) for s in seniority_exceptions)
     if not has_seniority:
         for term in prefilter.get("title_terms_unless_senior", []):
             if _phrase_regex(term).search(title):
-                return True
+                return f"title_terms_unless_senior: {term}"
 
-    return False
+    return None
+
+
+def prefilter_disqualifies(title: str, text: str, prefilter: dict[str, Any]) -> bool:
+    """True if a posting matches any hard prefilter rule (see :func:`prefilter_match`)."""
+    return prefilter_match(title, text, prefilter) is not None
 
 
 # ── CRUD for the TUI / web / CLI ──────────────────────────────────────────────

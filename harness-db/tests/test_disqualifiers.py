@@ -44,6 +44,33 @@ def test_prefilter_disqualifies_is_case_insensitive():
     assert disqualifiers.prefilter_disqualifies("Lead", "US WORK AUTHORIZATION required", PREFILTER)
 
 
+@pytest.mark.parametrize(
+    "title,text,expected",
+    [
+        ("Lead", "Must have US work authorization", "description_phrases: us work authorization"),
+        ("Software internship program", "", "title_terms: internship"),
+        ("Entry-level Developer", "remote", "title_terms_unless_senior: entry-level"),
+        # seniority exception suppresses the unless_senior match
+        ("Senior Engineer (no entry-level fluff)", "", None),
+        ("Principal Software Engineer", "Fully remote", None),
+    ],
+)
+def test_prefilter_match_names_the_firing_rule(title, text, expected):
+    assert disqualifiers.prefilter_match(title, text, PREFILTER) == expected
+
+
+def test_prefilter_match_agrees_with_disqualifies():
+    cases = [
+        ("Principal Engineer", "Must have US work authorization"),
+        ("Engineering Intern (Remote)", ""),
+        ("Staff Platform Engineer", "Remote-first"),
+    ]
+    for title, text in cases:
+        assert (disqualifiers.prefilter_match(title, text, PREFILTER) is not None) is (
+            disqualifiers.prefilter_disqualifies(title, text, PREFILTER)
+        )
+
+
 # Word-boundary matching: keywords match whole words, not substrings inside
 # larger words, and a geography keyword glued onto "/canada" does not fire.
 WORD_BOUNDARY_PREFILTER = {
