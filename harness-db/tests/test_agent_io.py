@@ -78,11 +78,17 @@ def test_build_score_command_targets_scoring_module():
     assert cmd == ["-m", "scoring_module", "--url", "https://x/1"]
 
 
-def test_build_prepare_prompt_includes_url():
+def test_build_prepare_prompt_uses_phase_prepare_protocol():
     p = _FakePosting(url="https://x/3", company="Acme", title="Eng")
     prompt = build_prepare_prompt(p)
-    assert "https://x/3" in prompt
+    assert "phase: prepare" in prompt
+    assert 'selected_urls: ["https://x/3"]' in prompt
     assert "job-preparer" in prompt
+    # Cover letters are opt-in: the prepare prompt must not request one.
+    assert "do NOT generate a cover letter" in prompt
+    # The old "run the full pipeline / skip scoring" wording must be gone.
+    assert "Skip scoring" not in prompt
+    assert "full pipeline" not in prompt
 
 
 def test_rejectable_states_membership():

@@ -85,9 +85,15 @@ def build_score_command(posting: PostingLike) -> list[str]:
 
 
 def build_prepare_prompt(posting: PostingLike) -> str:
-    """Prompt to run the full preparation pipeline for a 'selected' posting."""
+    """Prompt to prepare a single 'selected' posting via the job-preparer phase protocol.
+
+    Uses ``phase: prepare`` explicitly (job-preparer defaults to ``phase: score``)
+    and excludes cover letters, which are opt-in and handled separately.
+    """
     return (
-        "Use the job-preparer agent. A job is already in 'selected' state in the database "
-        f"(URL: {posting.url}). Skip scoring and selection — go straight to running the full "
-        "pipeline (resume-tailor, rendercv, cover-letter-creator, rendercv) for this job."
+        "Use the job-preparer agent with phase: prepare.\n"
+        f'selected_urls: ["{posting.url}"]\n'
+        "The posting is already 'selected' in the DB. Prepare the tailored resume and "
+        "final report only — do NOT generate a cover letter (cover letters are opt-in "
+        "and handled separately)."
     )
