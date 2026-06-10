@@ -99,6 +99,44 @@ BUILTIN_CONFIG_ITEMS: list[dict[str, str]] = [
     },
     {"key": "ADZUNA_APP_ID", "name": "Adzuna app ID", "description": "Adzuna API application id."},
     {"key": "ADZUNA_API_KEY", "name": "Adzuna API key", "description": "Adzuna API key."},
+    # Candidate-summary judgment fields (spec 14 A4): the deterministic
+    # `harness-db candidate-summary` command reads these instead of an LLM
+    # re-inventing them daily. Edit them in Settings → Config.
+    {
+        "key": "CANDIDATE_HEADLINE",
+        "name": "Candidate headline",
+        "description": "One-line professional identity, e.g. 'Principal Engineer — Cloud, AI'.",
+    },
+    {
+        "key": "CANDIDATE_NOTABLE",
+        "name": "Candidate notable",
+        "description": "A standout credential, e.g. '13 years at Oracle (OCI, Health & AI)'.",
+    },
+    {
+        "key": "CANDIDATE_YEARS_EXPERIENCE",
+        "name": "Years of experience",
+        "description": "Total years of professional experience (integer).",
+    },
+    {
+        "key": "CANDIDATE_WORK_TYPE",
+        "name": "Work type",
+        "description": "Desired work type (default 'fully remote').",
+    },
+    {
+        "key": "CANDIDATE_ELIGIBILITY",
+        "name": "Work eligibility",
+        "description": "Eligibility note for the scorer (default 'Canada-eligible').",
+    },
+    {
+        "key": "CANDIDATE_EMPLOYMENT",
+        "name": "Employment types",
+        "description": "Comma-separated (default 'full-time,contract,freelance').",
+    },
+    {
+        "key": "CANDIDATE_COMP_FLOOR_CAD",
+        "name": "Compensation floor (CAD)",
+        "description": "Optional minimum acceptable annual compensation in CAD (integer).",
+    },
 ]
 
 
@@ -233,6 +271,7 @@ def _import_existing(session: Session, uid: str) -> None:
         _import_sources(session, uid, data_root / "jobs" / "sources-config.json")
         _import_disqualifiers(session, uid, data_root / "disqualifiers.yaml")
         _import_target_roles(session, uid, data_root / "target-roles.md")
+        _import_candidate_fields(session, uid, data_root / "candidate-summary.json")
     _import_config(session, uid)
 
 
@@ -280,6 +319,42 @@ def _import_target_roles(session: Session, uid: str, path: Path) -> None:
             item = _find_or_create_target_role(session, uid, kind, value)
             wanted_ids.add(item.id)
     _apply_selection(session, uid, UserTargetRole, "item_id", wanted_ids)
+
+
+def _import_candidate_fields(session: Session, uid: str, path: Path) -> None:
+    """Seed candidate-summary judgment fields from an existing file (first run only).
+
+    Maps the LLM-synthesised ``candidate-summary.json`` fields onto the new
+    per-user config keys so an existing install migrates with zero typing. Only
+    fills keys the user has not already set.
+    """
+    if not path.exists():
+        return
+    try:
+        data = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return
+    req = data.get("requirements", {}) or {}
+    employment = req.get("employment")
+    values = {
+        "CANDIDATE_HEADLINE": data.get("headline"),
+        "CANDIDATE_NOTABLE": data.get("notable"),
+        "CANDIDATE_YEARS_EXPERIENCE": data.get("years_experience"),
+        "CANDIDATE_WORK_TYPE": req.get("work_type"),
+        "CANDIDATE_ELIGIBILITY": req.get("eligibility"),
+        "CANDIDATE_EMPLOYMENT": ",".join(employment)
+        if isinstance(employment, list)
+        else employment,
+        "CANDIDATE_COMP_FLOOR_CAD": req.get("comp_floor_cad"),
+    }
+    have = {
+        r.config_key
+        for r in session.scalars(select(UserConfigItem).where(UserConfigItem.uid == uid))
+    }
+    for key, value in values.items():
+        if key in have or value in (None, ""):
+            continue
+        session.add(UserConfigItem(uid=uid, config_key=key, value=str(value)))
 
 
 def _import_config(session: Session, uid: str) -> None:

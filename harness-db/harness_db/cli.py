@@ -143,6 +143,38 @@ def candidate(
     typer.echo(value)
 
 
+@app.command("candidate-summary")
+def candidate_summary(
+    write: bool = typer.Option(
+        False, "--write", help="Write $JOB_DATA_ROOT/candidate-summary.json (when inputs changed)."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Write even when the inputs hash is unchanged."
+    ),
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Assemble candidate-summary.json deterministically (resume + target roles + config).
+
+    Always prints the assembled JSON. With ``--write`` it writes the file only
+    when its ``inputs_hash`` differs from the on-disk copy (or with ``--force``),
+    so re-running on the same inputs is a no-op even on a new day.
+    """
+    from harness_db.candidate_summary import build_summary, write_summary
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    try:
+        if write:
+            summary, wrote = write_summary(force=force, uid=uid)
+            typer.echo(json.dumps(summary, indent=2))
+            typer.echo("[WROTE]" if wrote else "[UNCHANGED]", err=True)
+        else:
+            typer.echo(json.dumps(build_summary(uid), indent=2))
+    except (RuntimeError, FileNotFoundError, OSError) as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
 @app.command()
 def postings(
     db: Optional[Path] = typer.Option(None, "--db", help="Override the SQLite DB path."),
