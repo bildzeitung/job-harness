@@ -46,6 +46,11 @@ app.add_typer(user_app, name="user")
 config_app = typer.Typer(help="Manage per-user configuration values.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 
+companies_app = typer.Typer(
+    help="Record hiring companies seen by the searchers.", no_args_is_help=True
+)
+app.add_typer(companies_app, name="companies")
+
 
 def _posting_dict(p: Posting, full: bool) -> dict:
     """Project a Posting row to a JSON-friendly dict for the `postings` command."""
@@ -326,6 +331,66 @@ def roles_generate(
     ensure_schema_and_seed()
     written = write_target_roles_md(uid, path)
     typer.echo(f"wrote {written}")
+
+
+# ── companies ─────────────────────────────────────────────────────────────────
+
+
+def _load_batch_postings(path: Path) -> list[dict]:
+    """Postings list from a consolidator-schema object or a bare array file."""
+    data = json.loads(path.read_text())
+    if isinstance(data, dict):
+        postings = data.get("postings", [])
+    else:
+        postings = data
+    return postings if isinstance(postings, list) else []
+
+
+@companies_app.command("seen")
+def companies_seen(
+    files: List[Path] = typer.Argument(
+        ..., help="One or more jobs/{platform}-{date}.json batch files."
+    ),
+    platform: Optional[str] = typer.Option(
+        None,
+        "--platform",
+        help="Fallback platform when a file/posting omits its 'platform' key.",
+    ),
+    date: Optional[str] = typer.Option(
+        None, "--date", help="Batch date for last_seen (default: today)."
+    ),
+    db: Optional[Path] = typer.Option(None, "--db", help="Override the SQLite DB path."),
+) -> None:
+    """Upsert company records from searcher batch files (one call per agent).
+
+    Applies the per-platform flag policy in ``harness_db.companies`` (remote /
+    Canada ratchets, last_seen advance, notes fill-or-overwrite), replacing the
+    per-company ``INSERT … ON CONFLICT`` SQL the searchers hand-wrote.
+    """
+    from datetime import date as _date
+
+    from harness_db import companies
+    from harness_db.seed import ensure_schema_and_seed
+
+    engine = ensure_schema_and_seed(make_engine(_resolve_db(db)), import_existing=False)
+    batch_date = date or _date.today().isoformat()
+
+    postings: list[dict] = []
+    for f in files:
+        try:
+            postings.extend(_load_batch_postings(f))
+        except (OSError, json.JSONDecodeError) as e:
+            typer.echo(f"Warning: skipping {f}: {e}", err=True)
+
+    try:
+        result = companies.record_seen(engine, postings, batch_date, default_platform=platform)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(
+        f"[COMPANIES:SEEN] {result['companies']} companies "
+        f"({result['inserted']} new) from {len(files)} file(s)"
+    )
 
 
 # ── user management ───────────────────────────────────────────────────────────

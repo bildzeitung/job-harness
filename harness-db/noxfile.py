@@ -12,5 +12,7 @@ def ruff_format(session):
 
 @nox.session(tags=["test"])
 def tests(session):
-    session.install("-e", ".[dev]")
+    # consolidate-module is installed editable so the companies-policy sync-guard
+    # test can import consolidate_module.consolidator.PLATFORMS (its only use).
+    session.install("-e", ".[dev]", "-e", "../consolidate-module")
     session.run("pytest", *session.posargs)
