@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from harness_db.config import DEFAULT_UID
 from harness_db.models import (
     ConfigItem,
+    ConfigItemLabel,
+    Locale,
     PrefilterRule,
     ScoringModifierBlock,
     Source,
@@ -22,7 +24,12 @@ from harness_db.models import (
     UserTargetRole,
     make_engine,
 )
-from harness_db.seed import BUILTIN_CONFIG_ITEMS, BUILTIN_SOURCES, ensure_schema_and_seed
+from harness_db.seed import (
+    BUILTIN_CONFIG_ITEMS,
+    BUILTIN_SOURCES,
+    DEFAULT_LOCALE,
+    ensure_schema_and_seed,
+)
 
 
 @pytest.fixture
@@ -41,6 +48,37 @@ def test_seed_creates_catalogs_and_default_user(engine):
         config_keys = set(s.scalars(select(ConfigItem.key)))
         assert {x["key"] for x in BUILTIN_CONFIG_ITEMS} <= config_keys
         assert "JOB_TOP_N" in config_keys
+
+
+def test_seed_creates_locale_and_config_labels(engine):
+    ensure_schema_and_seed(engine, import_existing=False)
+    with Session(engine) as s:
+        assert s.get(Locale, DEFAULT_LOCALE) is not None
+        # Default user inherits the default locale.
+        assert s.get(User, DEFAULT_UID).locale == DEFAULT_LOCALE
+        # Every built-in config key has an en-US label sourced from its catalog row.
+        for item in BUILTIN_CONFIG_ITEMS:
+            lbl = s.get(ConfigItemLabel, (item["key"], DEFAULT_LOCALE))
+            assert lbl is not None
+            assert lbl.label == item["name"]
+            assert lbl.help_text == item["description"]
+
+
+def test_migrate_adds_locale_column_to_legacy_users_table(tmp_path):
+    """A pre-spec-15 users table (no locale column) gains it on seed."""
+    db = tmp_path / "legacy.db"
+    engine = make_engine(db)
+    with engine.begin() as conn:
+        conn.execute(
+            text("CREATE TABLE users (uid VARCHAR PRIMARY KEY, active BOOLEAN, created_at VARCHAR)")
+        )
+        conn.execute(text("INSERT INTO users (uid, active) VALUES ('default', 1)"))
+
+    ensure_schema_and_seed(engine, import_existing=False)
+
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)"))}
+    assert "locale" in cols
 
 
 def test_default_user_has_all_builtins_enabled(engine):

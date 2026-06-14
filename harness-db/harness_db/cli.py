@@ -46,6 +46,9 @@ app.add_typer(user_app, name="user")
 config_app = typer.Typer(help="Manage per-user configuration values.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 
+locales_app = typer.Typer(help="Inspect the supported UI locales.", no_args_is_help=True)
+app.add_typer(locales_app, name="locales")
+
 companies_app = typer.Typer(
     help="Record hiring companies seen by the searchers.", no_args_is_help=True
 )
@@ -508,6 +511,43 @@ def user_set_active(
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
     typer.echo(f"{uid}: {'active' if active else 'inactive'}")
+
+
+@user_app.command("locale")
+def user_locale(
+    code: Optional[str] = typer.Argument(
+        None, help="Locale code to set (e.g. en-US). Omit to print the current locale."
+    ),
+    uid: Optional[str] = typer.Option(None, "--uid", help="Target user (default: active user)."),
+) -> None:
+    """Get or set a user's UI locale."""
+    from harness_db import locales
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    if code is None:
+        typer.echo(locales.get_user_locale(uid))
+        return
+    try:
+        locales.set_user_locale(code, uid)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"locale set to {code}")
+
+
+# ── locales ────────────────────────────────────────────────────────────────────
+
+
+@locales_app.command("list")
+def locales_list() -> None:
+    """List the supported UI locales."""
+    from harness_db import locales
+    from harness_db.seed import ensure_schema_and_seed
+
+    ensure_schema_and_seed()
+    for loc in locales.list_locales():
+        typer.echo(f"{loc.code:<10} {loc.name or ''}")
 
 
 # ── config values ─────────────────────────────────────────────────────────────

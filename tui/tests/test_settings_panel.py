@@ -8,8 +8,8 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from harness_db import config_store, disqualifiers, sources_store, users
-from textual.widgets import DataTable, Input, TabbedContent, TabPane
+from harness_db import config_store, disqualifiers, locales, sources_store, users
+from textual.widgets import DataTable, Input, Select, TabbedContent, TabPane
 
 from tui.app import JobViewerApp
 from tui.widgets import SettingsPanel
@@ -23,6 +23,7 @@ def _isolate(monkeypatch, tmp_path):
     config_store._engine_for.cache_clear()
     disqualifiers._engine_for.cache_clear()
     sources_store._engine.cache_clear()
+    locales._engine_for.cache_clear()
     return tmp_path / "postings.db"
 
 
@@ -231,5 +232,44 @@ def test_add_scoring_block_rejects_non_integer_modifier(_isolate):
             await pilot.pause()
             names = {b.name for b in disqualifiers.list_scoring_blocks("default")}
             assert "Bad" not in names
+
+    asyncio.run(scenario())
+
+
+def test_config_tab_renders_localized_labels(_isolate):
+    """The Config sub-tab shows the en-US label + help text, not the raw key."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            app.query_one("#tabs").active = "settings"
+            await pilot.pause()
+            panel = app.query_one(SettingsPanel)
+            panel.query_one("#settings-tabs", TabbedContent).active = "config"
+            await pilot.pause()
+            label_text = [str(lbl.content) for lbl in panel.query("#config-fields Label")]
+            assert "Resume file" in label_text  # humanized RESUME_FILE label
+            assert "RESUME_FILE" not in label_text
+            help_text = [str(s.content) for s in panel.query(".config-help")]
+            assert any("RenderCV" in h for h in help_text)
+
+    asyncio.run(scenario())
+
+
+def test_locale_selector_populated_and_persists(_isolate):
+    """The Profile locale picker lists seeded locales and persists a change."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            app.query_one("#tabs").active = "settings"
+            await pilot.pause()
+            panel = app.query_one(SettingsPanel)
+            select = panel.query_one("#locale-select", Select)
+            assert select.value == "en-US"
+            # Selecting a known locale persists it for the active user.
+            select.value = "en-US"
+            await pilot.pause()
+            assert locales.get_user_locale("default") == "en-US"
 
     asyncio.run(scenario())

@@ -25,13 +25,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from harness_db.config import DEFAULT_UID, _env_or_settings, get_db_path, get_job_data_root
 from harness_db.models import (
     Base,
     ConfigItem,
+    ConfigItemLabel,
+    Locale,
     PrefilterRule,
     ScoringModifierBlock,
     Source,
@@ -49,6 +51,14 @@ from harness_db.users import _now
 _HERE = Path(__file__).parent
 _DISQUALIFIERS_DEFAULT = _HERE / "disqualifiers.default.yaml"
 _TARGET_ROLES_DEFAULT = _HERE / "target-roles.default.yaml"
+
+# The default UI locale. Every label resolver falls back to this, and new users
+# inherit it (spec 15).
+DEFAULT_LOCALE = "en-US"
+
+BUILTIN_LOCALES: list[dict[str, str]] = [
+    {"code": "en-US", "name": "English (US)"},
+]
 
 PREFILTER_CATEGORIES = (
     "description_phrases",
@@ -149,8 +159,11 @@ def ensure_schema_and_seed(engine: Engine | None = None, import_existing: bool =
     """Create the config schema and seed catalogs + the default user (idempotent)."""
     engine = engine or make_engine(get_db_path())
     Base.metadata.create_all(engine)
+    _migrate_columns(engine)
     with Session(engine) as session:
+        _seed_locales(session)
         _seed_config_items(session)
+        _seed_config_labels(session)
         _seed_sources(session)
         _seed_prefilter_catalog(session)
         _seed_scoring_catalog(session)
@@ -164,7 +177,31 @@ def ensure_schema_and_seed(engine: Engine | None = None, import_existing: bool =
     return engine
 
 
+# ── lightweight column migrations ─────────────────────────────────────────────
+
+
+def _migrate_columns(engine: Engine) -> None:
+    """Add columns introduced after a table first shipped.
+
+    ``Base.metadata.create_all`` creates missing *tables* but never alters an
+    existing one, so a column added to a long-lived table (here ``users.locale``,
+    spec 15) needs an explicit, idempotent ``ALTER TABLE``. Guarded by
+    ``PRAGMA table_info`` so it is a no-op once applied.
+    """
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)"))}
+        if cols and "locale" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN locale VARCHAR"))
+
+
 # ── catalog seeding (insert-missing only) ─────────────────────────────────────
+
+
+def _seed_locales(session: Session) -> None:
+    existing = set(session.scalars(select(Locale.code)))
+    for loc in BUILTIN_LOCALES:
+        if loc["code"] not in existing:
+            session.add(Locale(active=True, **loc))
 
 
 def _seed_config_items(session: Session) -> None:
@@ -172,6 +209,35 @@ def _seed_config_items(session: Session) -> None:
     for item in BUILTIN_CONFIG_ITEMS:
         if item["key"] not in existing:
             session.add(ConfigItem(**item))
+
+
+def _seed_config_labels(session: Session) -> None:
+    """Seed ``en-US`` labels/help text from the built-in catalog's name/description.
+
+    The English strings live once in ``BUILTIN_CONFIG_ITEMS``; this projects them
+    into the locale-keyed label table so the resolver has a row to read. Other
+    locales are added by future translations. Insert-missing only — never
+    clobbers an edited or translated label.
+    """
+    session.flush()  # ensure freshly-added ConfigItem rows are queryable
+    existing = {
+        (lbl.config_key, lbl.locale)
+        for lbl in session.scalars(
+            select(ConfigItemLabel).where(ConfigItemLabel.locale == DEFAULT_LOCALE)
+        )
+    }
+    for item in BUILTIN_CONFIG_ITEMS:
+        key = item["key"]
+        if (key, DEFAULT_LOCALE) in existing:
+            continue
+        session.add(
+            ConfigItemLabel(
+                config_key=key,
+                locale=DEFAULT_LOCALE,
+                label=item.get("name") or key,
+                help_text=item.get("description"),
+            )
+        )
 
 
 def _seed_sources(session: Session) -> None:
@@ -228,7 +294,7 @@ def _ensure_default_user(session: Session) -> bool:
     """Ensure the default user exists. Returns True if it was just created."""
     if session.get(User, DEFAULT_UID) is not None:
         return False
-    session.add(User(uid=DEFAULT_UID, active=True, created_at=_now()))
+    session.add(User(uid=DEFAULT_UID, active=True, created_at=_now(), locale=DEFAULT_LOCALE))
     return True
 
 

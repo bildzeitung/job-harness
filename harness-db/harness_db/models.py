@@ -103,6 +103,20 @@ class User(Base):
     uid: Mapped[str] = mapped_column(String, primary_key=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[str | None] = mapped_column(String)
+    # BCP-47 locale tag (FK to locales.code) selecting which Settings labels the
+    # user sees. Nullable for back-compat with rows created before the column
+    # existed; readers default a NULL to ``DEFAULT_LOCALE``.
+    locale: Mapped[str | None] = mapped_column(String, ForeignKey("locales.code"))
+
+
+class Locale(Base):
+    """Catalog of supported UI locales (spec 15). Seeded with ``en-US``."""
+
+    __tablename__ = "locales"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)  # BCP-47 tag, e.g. "en-US"
+    name: Mapped[str | None] = mapped_column(String)  # human name, e.g. "English (US)"
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class ConfigItem(Base):
@@ -113,6 +127,23 @@ class ConfigItem(Base):
     key: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str | None] = mapped_column(String)
     description: Mapped[str | None] = mapped_column(String)
+
+
+class ConfigItemLabel(Base):
+    """Localized label + help text for one config key, per locale (spec 15).
+
+    The composite ``(config_key, locale)`` key lets a future translation supply a
+    label/help_text per locale without touching the language-neutral catalog row.
+    """
+
+    __tablename__ = "config_item_labels"
+
+    config_key: Mapped[str] = mapped_column(
+        String, ForeignKey("config_items.key"), primary_key=True
+    )
+    locale: Mapped[str] = mapped_column(String, ForeignKey("locales.code"), primary_key=True)
+    label: Mapped[str] = mapped_column(String)
+    help_text: Mapped[str | None] = mapped_column(String)
 
 
 class UserConfigItem(Base):

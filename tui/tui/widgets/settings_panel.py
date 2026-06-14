@@ -6,7 +6,7 @@ the web UI uses), so the TUI and web stay in sync with the DB.
 
 from __future__ import annotations
 
-from harness_db import config_store, disqualifiers, sources_store, target_roles, users
+from harness_db import config_store, disqualifiers, locales, sources_store, target_roles, users
 from harness_db.config import get_active_uid, set_active_uid
 from harness_db.disqualifiers import PREFILTER_CATEGORIES
 from harness_db.seed import ensure_schema_and_seed
@@ -92,6 +92,11 @@ class SettingsPanel(Widget):
                 yield Button("[u]A[/u]dd user", id="add-user-btn", variant="primary")
                 yield Button("Ma[u]k[/u]e active", id="use-user-btn")
                 yield Button("[u]T[/u]oggle active flag", id="toggle-user-btn")
+            with Horizontal(classes="settings-row"):
+                yield Label("Locale:", classes="locale-label")
+                # Starts empty; _load_locale() fills it and selects the user's
+                # locale. allow_blank (default) tolerates the empty initial state.
+                yield Select([], id="locale-select", prompt="locale")
 
     def _compose_config(self) -> ComposeResult:
         with VerticalScroll():
@@ -148,6 +153,7 @@ class SettingsPanel(Widget):
     def reload(self) -> None:
         self._uid = get_active_uid()
         self._load_users()
+        self._load_locale()
         self._load_config()
         self._load_sources()
         self._load_disq()
@@ -227,13 +233,28 @@ class SettingsPanel(Widget):
         except Exception:
             return None
 
+    def _load_locale(self) -> None:
+        """Populate the locale picker with available locales for the active user."""
+        select = self.query_one("#locale-select", Select)
+        options = [(loc.name or loc.code, loc.code) for loc in locales.list_locales()]
+        current = locales.get_user_locale(self._uid)
+        # set_options resets value, so re-apply the user's current locale after.
+        select.set_options(options)
+        if any(code == current for _, code in options):
+            with select.prevent(Select.Changed):
+                select.value = current
+
     # --- config --------------------------------------------------------------
 
     def _load_config(self) -> None:
         container = self.query_one("#config-fields", Vertical)
         container.remove_children()
+        labels = locales.get_labels(locales.get_user_locale(self._uid))
         for key, value in config_store.list_config(self._uid).items():
-            container.mount(Label(key))
+            label, help_text = labels.get(key, (key, None))
+            container.mount(Label(label))
+            if help_text:
+                container.mount(Static(help_text, classes="config-help"))
             container.mount(Input(value=value or "", id=f"cfg-{key}"))
 
     # --- sources -------------------------------------------------------------
@@ -304,6 +325,18 @@ class SettingsPanel(Widget):
             cur = {i.id: i.enabled for i in target_roles.list_target_roles(self._uid)}
             target_roles.set_enabled(int(key), not cur.get(int(key), True), self._uid)
             self._load_roles()
+        event.stop()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Switch the active user's locale; re-render config with its labels."""
+        if event.select.id != "locale-select" or event.value is Select.BLANK:
+            return
+        try:
+            locales.set_user_locale(str(event.value), self._uid)
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+            return
+        self._load_config()
         event.stop()
 
     # --- keyboard accelerators (see BINDINGS) --------------------------------

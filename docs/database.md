@@ -303,9 +303,11 @@ seeded/migrated by `harness_db.seed.ensure_schema_and_seed`.
 
 | Table | Purpose |
 |-------|---------|
-| `users` | `uid` PK, `active` flag, `created_at`. |
-| `config_items` | Catalog of config keys: `JOB_DATA_ROOT`, `RESUME_FILE`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY`, and the candidate-summary judgment fields `CANDIDATE_HEADLINE`, `CANDIDATE_NOTABLE`, `CANDIDATE_YEARS_EXPERIENCE`, `CANDIDATE_WORK_TYPE`, `CANDIDATE_ELIGIBILITY`, `CANDIDATE_EMPLOYMENT`, `CANDIDATE_COMP_FLOOR_CAD`. |
+| `users` | `uid` PK, `active` flag, `created_at`, `locale` (BCP-47 tag, FK to `locales.code`, default `en-US`). |
+| `config_items` | Catalog of config keys: `JOB_DATA_ROOT`, `RESUME_FILE`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY`, and the candidate-summary judgment fields `CANDIDATE_HEADLINE`, `CANDIDATE_NOTABLE`, `CANDIDATE_YEARS_EXPERIENCE`, `CANDIDATE_WORK_TYPE`, `CANDIDATE_ELIGIBILITY`, `CANDIDATE_EMPLOYMENT`, `CANDIDATE_COMP_FLOOR_CAD`. The language-neutral `name`/`description` are the en-US fallback for labels. |
 | `user_config_items` | Per-user value for a config key (PK `uid`+`config_key`). |
+| `locales` | Catalog of supported UI locales (spec 15): `code` PK (e.g. `en-US`), `name`, `active`. Seeded with `en-US`. |
+| `config_item_labels` | Localized label + help text for a config key, per locale (spec 15). Composite PK `config_key`+`locale`; columns `label`, `help_text`. Seeded for `en-US` from each `config_items` row's `name`/`description`. |
 | `sources` | Catalog of the 7 high-level search sources. |
 | `user_sources` | Per-user enabled flag for a source. |
 | `prefilter_rules` | Prefilter rule: `category` (one of the 4 disqualifier sections) + `value`; `owner_uid` NULL = built-in. |
@@ -330,9 +332,20 @@ seeded/migrated by `harness_db.seed.ensure_schema_and_seed`.
   into that user — a one-time migration that never clobbers later UI edits.
 - The **active user** is resolved CLI flag → `.active-user` dotfile (beside the
   DB file) → `default`.
+- **Config labels** resolve via `harness_db.locales.get_labels(locale)`, falling
+  back per key: the user's `locale` → `en-US` → the `config_items` `name`/
+  `description` → the raw key. Each user's `locale` (`harness_db.locales`
+  `get_user_locale`/`set_user_locale`) selects which labels the Settings → Config
+  tab renders. `users.locale` is added to pre-existing DBs by a small idempotent
+  `ALTER TABLE` in `ensure_schema_and_seed` (`create_all` only creates new
+  *tables*, never new columns).
 
 ### Editing
 
 Both front-ends edit these tables through the same shared libraries (TUI
 **Settings** tab; web **Settings** tab), and the `harness-db` CLI exposes
-`user`, `config`, `sources`, `disqualifiers`, and `target-roles` command groups.
+`user`, `config`, `locales`, `sources`, `disqualifiers`, and `target-roles`
+command groups. The TUI Settings → Config tab renders the active user's
+localized labels/help text, and Settings → Profile lets the user pick a locale
+(`harness-db user locale [CODE]`); the web UI's localization is deferred to the
+future multi-tenant work.
