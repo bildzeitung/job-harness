@@ -1,8 +1,7 @@
 # Candidate job sources — implemented and deferred
 
-This is the running catalog of job-posting sources the harness searches, plus the
-ones we researched and chose **not** to wire in (with the reasoning, so the
-decision doesn't have to be re-litigated each time someone asks "what about X?").
+This is the running catalog of job-posting sources the harness searches. There
+are also some that Claude found but were not wired in, along with why.
 
 Researched 2026-06-04.
 
@@ -24,8 +23,8 @@ Researched 2026-06-04.
 | **We Work Remotely** | RSS category feeds | `job-seeker-remotive` → `api_search wwr` |
 | Open-ended research | WebSearch / WebFetch | `job-seeker-research` |
 
-Ashby, Workable, and Recruitee were added to the `greenhouse` ATS agent (2026-06-04
-/ 2026-06-05) because they share the same slug-fan-out mechanism and company-enrichment
+Ashby, Workable, and Recruitee were added to the `greenhouse` ATS agent
+because they share the same slug-fan-out mechanism and company-enrichment
 policy (public board API, remote + Canada-OK, so `harness-db companies seen` ratchets
 `remote_confirmed` + `canada_confirmed`). Workable and Recruitee boards include on-site roles and skew
 EU/SMB, so each fetcher folds the board's own remote flag (`telecommuting` /
@@ -40,7 +39,7 @@ feed (Himalayas), and RSS category feeds (WWR) — and a different DB-enrichment
 rule: `remote_confirmed` only, never `canada_confirmed`, because they confirm
 remote but not a Canada-based office.
 
-**Canada relevance:** Himalayas (`locationRestrictions`) and WWR (`region`) carry
+**Canada-specific:** Himalayas (`locationRestrictions`) and WWR (`region`) carry
 an explicit per-posting geographic restriction, and Remotive carries
 `candidate_required_location`. A shared `_canada_eligible()` helper drops any
 posting whose restriction names only non-Canada regions (e.g. "USA Only",
@@ -51,7 +50,7 @@ is still confirmed downstream by the scorer / `job-preparer`.
 ### Adding more boards is config, not code
 
 For the ATS sources (Greenhouse / Lever / Ashby / Workable / Recruitee), adding a
-company is one slug in `api-search/api_search/sources_default.yaml`. No code change.
+company is one slug in `api-search/api_search/sources_default.yaml`.
 Verify a slug returns postings before adding it:
 
 - Ashby — `curl https://api.ashbyhq.com/posting-api/job-board/{slug}`
@@ -122,7 +121,3 @@ These Canada-focused boards have **no machine-readable feed**, so they cannot be
   **Remote Rocketship** (`remoterocketship.com/ca`), **Arc.dev** — curated
   Canada-remote tech boards; no free query API.
 
-Two boards from the original Tier-3 list **did** expose a feed and are now wired
-in as `api_search` sources (see the table at the top): **Himalayas** (JSON
-recency feed) and **We Work Remotely** (RSS category feeds), both filtered to
-Canada-eligible postings.

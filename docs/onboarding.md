@@ -87,7 +87,7 @@ This installs:
 - **[RTK](https://github.com/rtk-ai/rtk)** — the token-optimizing CLI proxy.
 - **[Ollama](https://ollama.com)** and the **`qwen3-embedding:0.6b`** model — the
   local, on-GPU embedding model that powers semantic repost-dedup and score
-  reuse. No API calls, no tokens. See [embeddings.md](embeddings.md) for what it
+  reuse. See [embeddings.md](embeddings.md) for what it
   does and how to tune it.
 
 Then create your job-data directory — everything the harness produces (the
@@ -141,42 +141,36 @@ personal resume folder); you will point the harness at its absolute path next.
 
 Configuration is **data-driven and per-user** — the values live in the harness DB
 and you edit them from the TUI/web **Settings** tab (or the `harness-db config`
-CLI). The only values still read from `.claude/settings.local.json` env are the
-**bootstrap** pointers needed to find the DB before any user is known. **This
-file is gitignored — never commit it.** Create it if it does not exist:
+CLI). 
+
+For **bootstrap** purposes, the database file path may be still read from `.claude/settings.local.json` as an environment variable. **The `settings.local.json`
+file is gitignored — never commit it.** 
+
+Create it if it does not exist and include:
 
 ```json
 {
   "env": {
-    "HARNESS_DB": "/home/you/job-data/jobs/postings.db",
-    "RESUME_FILE": "/absolute/path/to/Your_Name_CV.yaml",
-    "JOB_DATA_ROOT": "/home/you/job-data",
-    "ADZUNA_APP_ID": "your-adzuna-app-id",
-    "ADZUNA_API_KEY": "your-adzuna-api-key"
+    "HARNESS_DB": "/home/you/job-data/jobs/postings.db"
   }
 }
 ```
 
 | Variable | What it does |
-|----------|--------------|
-| `HARNESS_DB` | **Bootstrap.** Absolute path to the SQLite DB file. Optional — if unset it falls back to `$JOB_DATA_ROOT/jobs/postings.db`. Set it to put the DB anywhere. |
-| `RESUME_FILE` | Absolute path to the YAML from [§5](#5-create-your-resume-yaml). Now a DB config item too; the env value is a fallback and the source for the first-run import. |
-| `JOB_DATA_ROOT` | Your job-data directory (tailored output at `$JOB_DATA_ROOT/output/`). Also a DB config item; env is the fallback/seed. |
-| `ADZUNA_APP_ID` / `ADZUNA_API_KEY` | Adzuna Canada API credentials. Now DB config items; env is the fallback/seed. Needed only for the Adzuna source. |
+| -------- | ------------ |
+| `HARNESS_DB` | Absolute path to the SQLite DB file. Optional — if unset it falls back to `$JOB_DATA_ROOT/jobs/postings.db`. |
 
-A few more knobs are pure DB config items (no env entry needed) — edit them in
-**Settings → Config** or with `harness-db config set <KEY> <value>`:
+The remaining settings are set in the TUI or web interfaces, that is, in **Settings → Config** or with `harness-db config set <KEY> <value>`:
 
 | Config key | What it does |
-|------------|--------------|
+| ---------- | ------------ |
 | `JOB_TOP_N` | Optional. How many top-ranked postings `/job-search` presents for you to choose from. Defaults to `5` if unset. |
+| `JOB_DATA_ROOT` | Your job-data directory (tailored output at `$JOB_DATA_ROOT/output/`). |
+| `RESUME_FILE` | Absolute path to the YAML from [§5](#5-create-your-resume-yaml). |
+| `ADZUNA_APP_ID` / `ADZUNA_API_KEY` | Adzuna Canada API credentials. |
 
-> **How resolution works.** `RESUME_FILE`, `ADZUNA_*`, `JOB_DATA_ROOT`, and `JOB_TOP_N`
-> resolve as: the active user's stored value → the env / `settings.local.json`
-> fallback. On first run the harness seeds a `default` user and **imports** your
-> existing env values + config files into it, so an existing single-user setup
-> keeps working with zero changes. After that, edit them in **Settings**.
-
+> On first run the harness seeds a `default` user.
+>
 > **No `ANTHROPIC_API_KEY` required.** The scoring module authenticates by
 > falling back to the OAuth token in `~/.claude/.credentials.json` — the same
 > session Claude Code already uses. Setting an API key takes priority if you
@@ -216,12 +210,10 @@ before LinkedIn is wired up.
 ## 8. (Optional) Tune your search config
 
 Search tuning is **data-driven and per-user** — sources, target roles, and
-disqualifiers all live in the harness DB and you edit them from the TUI/web
+disqualifiers all live in the harness DB and are edited from the TUI/web
 **Settings** tab (or the `harness-db` CLI). On first run the built-in defaults are
-seeded and any existing `target-roles.md` / `disqualifiers.yaml` /
-`sources-config.json` files are imported once into your `default` user, so prior
-tuning carries over. They are complementary: **target roles** say what to
-**look for**, **disqualifiers** say what to **drop**, **sources** say where to
+seeded. The items are complementary: **target roles** say what to
+**look for**, **disqualifiers** say what to **drop**, and **sources** say where to
 **search**.
 
 ### Target roles — what to look for

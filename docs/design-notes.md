@@ -7,7 +7,7 @@ on every spawn — `job-preparer` is spawned up to three times per run) and the
 reasoning is reviewed in one place. When a prompt says "see design-notes", this
 is the file.
 
-## Configuration is data-driven and per-user (spec 12)
+## Configuration is data-driven and per-user
 
 Every user-facing input — sources, disqualifiers, target roles, the candidate
 config keys, and the file pointers (`RESUME_FILE`, `JOB_DATA_ROOT`, Adzuna
