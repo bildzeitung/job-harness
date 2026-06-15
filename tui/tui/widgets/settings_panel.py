@@ -251,10 +251,8 @@ class SettingsPanel(Widget):
         container.remove_children()
         labels = locales.get_labels(locales.get_user_locale(self._uid))
         for key, value in config_store.list_config(self._uid).items():
-            label, help_text = labels.get(key, (key, None))
+            label, _help_text = labels.get(key, (key, None))
             container.mount(Label(label))
-            if help_text:
-                container.mount(Static(help_text, classes="config-help"))
             container.mount(Input(value=value or "", id=f"cfg-{key}"))
 
     # --- sources -------------------------------------------------------------
