@@ -256,6 +256,55 @@ def test_config_tab_renders_localized_labels(_isolate):
     asyncio.run(scenario())
 
 
+def test_config_tab_tab_order_skips_scroll_container(_isolate):
+    """On Config, Tab from the sub-tab header must land directly on the first
+    Input (not the scroll wrapper), and Shift+Tab must return straight to the
+    header — no intermediate stop on the VerticalScroll."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test() as pilot:
+            await pilot.press("t")
+            await pilot.press("t")  # into settings, header focused
+            panel = app.query_one(SettingsPanel)
+            header = panel._tabs_header()
+            panel.query_one("#settings-tabs", TabbedContent).active = "config"
+            await pilot.pause()
+            assert app.focused is header
+            await pilot.press("tab")
+            await pilot.pause()
+            focused = app.focused
+            assert isinstance(focused, Input)
+            assert focused.id is not None and focused.id.startswith("cfg-")
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.focused is header
+
+    asyncio.run(scenario())
+
+
+def test_config_tab_scrolls_last_field_into_view(_isolate):
+    """Focusing the last config field (Resume file) scrolls it fully into the
+    VerticalScroll viewport, so it is never left half-hidden."""
+
+    async def scenario():
+        app = JobViewerApp(db_path=_isolate)
+        async with app.run_test(size=(120, 30)) as pilot:
+            app.query_one("#tabs").active = "settings"
+            await pilot.pause()
+            panel = app.query_one(SettingsPanel)
+            panel.query_one("#settings-tabs", TabbedContent).active = "config"
+            await pilot.pause()
+            last = panel.query_one("#cfg-RESUME_FILE", Input)
+            last.focus()
+            for _ in range(3):
+                await pilot.pause()
+            scroll = panel.query_one("#config-scroll")
+            assert scroll.region.contains_region(last.region)
+
+    asyncio.run(scenario())
+
+
 def test_locale_selector_populated_and_persists(_isolate):
     """The Profile locale picker lists seeded locales and persists a change."""
 

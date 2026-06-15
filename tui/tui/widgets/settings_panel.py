@@ -99,7 +99,13 @@ class SettingsPanel(Widget):
                 yield Select([], id="locale-select", prompt="locale")
 
     def _compose_config(self) -> ComposeResult:
-        with VerticalScroll():
+        # can_focus=False keeps the scroll container out of the Tab order: Tab
+        # from the sub-tab header lands directly on the first Input (and
+        # Shift+Tab back on the header) instead of stopping on the wrapper.
+        # Focused inputs still scroll into view, so the list stays reachable.
+        scroll = VerticalScroll(id="config-scroll")
+        scroll.can_focus = False
+        with scroll:
             yield Static("Per-user config (blank inherits the env/settings fallback):")
             yield Vertical(id="config-fields")
             yield Button("[u]S[/u]ave config", id="save-config-btn", variant="primary")
@@ -252,8 +258,13 @@ class SettingsPanel(Widget):
         labels = locales.get_labels(locales.get_user_locale(self._uid))
         for key, value in config_store.list_config(self._uid).items():
             label, _help_text = labels.get(key, (key, None))
-            container.mount(Label(label))
-            container.mount(Input(value=value or "", id=f"cfg-{key}"))
+            container.mount(
+                Horizontal(
+                    Label(label, classes="config-label"),
+                    Input(value=value or "", id=f"cfg-{key}"),
+                    classes="config-row",
+                )
+            )
 
     # --- sources -------------------------------------------------------------
 

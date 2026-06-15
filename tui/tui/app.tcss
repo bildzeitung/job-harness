@@ -85,9 +85,25 @@ TabPane {
     margin: 0 1;
 }
 
-#config-fields Input {
+/* Let the field list grow to its content so the VerticalScroll above it can
+   actually scroll; otherwise the default 1fr height clips the last rows. */
+#config-fields {
+    height: auto;
+}
+
+.config-row {
+    height: auto;
+}
+
+.config-row .config-label {
+    width: 28;
+    height: 3;
+    content-align: left middle;
+    padding-right: 1;
+}
+
+.config-row Input {
     width: 1fr;
-    margin-bottom: 1;
 }
 
 .locale-label {
