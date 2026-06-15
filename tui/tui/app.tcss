@@ -90,10 +90,6 @@ TabPane {
     margin-bottom: 1;
 }
 
-.config-help {
-    color: $text-muted;
-}
-
 .locale-label {
     padding: 1 1 0 0;
 }

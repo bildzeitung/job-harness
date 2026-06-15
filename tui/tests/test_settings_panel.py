@@ -237,7 +237,7 @@ def test_add_scoring_block_rejects_non_integer_modifier(_isolate):
 
 
 def test_config_tab_renders_localized_labels(_isolate):
-    """The Config sub-tab shows the en-US label + help text, not the raw key."""
+    """The Config sub-tab shows the en-US label (no help text), not the raw key."""
 
     async def scenario():
         app = JobViewerApp(db_path=_isolate)
@@ -250,8 +250,8 @@ def test_config_tab_renders_localized_labels(_isolate):
             label_text = [str(lbl.content) for lbl in panel.query("#config-fields Label")]
             assert "Resume file" in label_text  # humanized RESUME_FILE label
             assert "RESUME_FILE" not in label_text
-            help_text = [str(s.content) for s in panel.query(".config-help")]
-            assert any("RenderCV" in h for h in help_text)
+            # Help text is intentionally not rendered — labels only.
+            assert not panel.query(".config-help")
 
     asyncio.run(scenario())
 
