@@ -15,6 +15,7 @@ def index() -> rx.Component:
     return rx.container(
         rx.vstack(
             rx.hstack(
+                rx.image(src="/logo.svg", alt="Job Harness", height="2.5em", width="2.5em"),
                 rx.heading("Job Harness", size="6"),
                 rx.spacer(),
                 rx.color_mode.button(),

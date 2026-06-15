@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Job Harness — cheerful goose">
+  <!-- Job Harness logo: head of a cheerful goose. Plain lines, flat colour, circular badge. -->
+  <defs>
+    <clipPath id="badge"><circle cx="128" cy="128" r="124"/></clipPath>
+  </defs>
+
+  <!-- Sky badge -->
+  <g clip-path="url(#badge)">
+    <rect x="0" y="0" width="256" height="256" fill="#BFE6F2"/>
+  </g>
+  <circle cx="128" cy="128" r="124" fill="none" stroke="#2B2B2B" stroke-width="6"/>
+
+  <!-- Goose silhouette: head + neck, facing right (white with single outline) -->
+  <path d="M 140,58
+           C 166,58 186,76 188,100
+           C 190,120 189,150 184,180
+           C 181,204 178,224 162,234
+           C 150,241 120,241 108,232
+           C 96,222 98,196 108,172
+           C 95,152 91,118 100,94
+           C 107,72 118,58 140,58 Z"
+        fill="#FFFFFF" stroke="#2B2B2B" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- Rosy cheek (cheerful) -->
+  <circle cx="150" cy="122" r="9" fill="#F7B6B6" opacity="0.7"/>
+
+  <!-- Beak, pointing right -->
+  <path d="M 185,96 L 236,114 L 185,132 Z"
+        fill="#F6A623" stroke="#2B2B2B" stroke-width="6" stroke-linejoin="round"/>
+  <circle cx="206" cy="111" r="2.6" fill="#2B2B2B"/>
+
+  <!-- Eye (bright, cheerful) -->
+  <circle cx="151" cy="98" r="7.5" fill="#2B2B2B"/>
+  <circle cx="148.5" cy="95.5" r="2.6" fill="#FFFFFF"/>
+</svg>

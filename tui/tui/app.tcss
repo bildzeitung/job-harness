@@ -2,6 +2,13 @@ Screen {
     layout: vertical;
 }
 
+#logo-banner {
+    height: 3;
+    padding: 0 1;
+    color: $accent;
+    background: $surface;
+}
+
 TabbedContent {
     height: 1fr;
 }

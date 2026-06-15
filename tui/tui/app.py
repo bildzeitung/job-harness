@@ -4,8 +4,9 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, TabbedContent, TabPane
+from textual.widgets import Footer, Header, Static, TabbedContent, TabPane
 
+from tui.logo import GOOSE_BANNER
 from tui.widgets import CompanyPanel, JobsPanel, SettingsPanel
 
 
@@ -24,6 +25,7 @@ class JobViewerApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static(GOOSE_BANNER, id="logo-banner")
         with TabbedContent(id="tabs", initial="jobs"):
             with TabPane("Jobs", id="jobs"):
                 yield JobsPanel(id="jobs-panel")
