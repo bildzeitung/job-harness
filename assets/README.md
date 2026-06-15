@@ -1,7 +1,8 @@
 # Job Harness logo
 
 The head of a cheerful goose, facing right — plain lines and flat colour, drawn
-as a circular badge so it works as a patch or app icon.
+as a circular patch (so it works as a patch or app icon) with a curved
+`JOB HARNESS` wordmark, a smiling bill, a happy eye, and a couple of sparkles.
 
 | File | Use |
 | --- | --- |
@@ -16,7 +17,8 @@ as a circular badge so it works as a patch or app icon.
 | Goose body | `#FFFFFF` |
 | Beak | `#F6A623` |
 | Cheek | `#F7B6B6` |
-| Outline / eye | `#2B2B2B` |
+| Sparkles | `#FFD24A` |
+| Outline / eye / wordmark | `#2B2B2B` |
 
 When updating the design, change `logo.svg` here first (the source of truth) and
 copy it to `web/assets/logo.svg`; keep `logo.txt` and `tui/tui/logo.py` in sync.

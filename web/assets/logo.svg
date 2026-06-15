@@ -1,35 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Job Harness — cheerful goose">
-  <!-- Job Harness logo: head of a cheerful goose. Plain lines, flat colour, circular badge. -->
+  <!-- Job Harness logo: head of a cheerful goose, as a circular patch with wordmark. -->
   <defs>
     <clipPath id="badge"><circle cx="128" cy="128" r="124"/></clipPath>
+    <!-- Bottom arc for the curved wordmark (left -> right through the bottom). -->
+    <path id="wordmark-arc" d="M 44,182 A 102,102 0 0 0 212,182"/>
   </defs>
 
-  <!-- Sky badge -->
+  <!-- Sky badge with patch rings -->
   <g clip-path="url(#badge)">
     <rect x="0" y="0" width="256" height="256" fill="#BFE6F2"/>
   </g>
   <circle cx="128" cy="128" r="124" fill="none" stroke="#2B2B2B" stroke-width="6"/>
+  <circle cx="128" cy="128" r="115" fill="none" stroke="#2B2B2B" stroke-width="2" opacity="0.5"/>
 
-  <!-- Goose silhouette: head + neck, facing right (white with single outline) -->
-  <path d="M 140,58
-           C 166,58 186,76 188,100
-           C 190,120 189,150 184,180
-           C 181,204 178,224 162,234
-           C 150,241 120,241 108,232
-           C 96,222 98,196 108,172
-           C 95,152 91,118 100,94
-           C 107,72 118,58 140,58 Z"
+  <!-- Cheerful sparkles -->
+  <g fill="#FFD24A" stroke="#2B2B2B" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M 196,62 l 4,9 9,4 -9,4 -4,9 -4,-9 -9,-4 9,-4 z"/>
+    <path d="M 70,150 l 3,6 6,3 -6,3 -3,6 -3,-6 -6,-3 6,-3 z"/>
+  </g>
+
+  <!-- Goose silhouette: head + short neck, facing right -->
+  <path d="M 110,40
+           C 142,40 166,60 170,92
+           C 171,104 170,116 164,126
+           C 158,140 154,150 156,164
+           C 158,176 156,186 146,192
+           C 138,197 112,197 104,190
+           C 92,181 92,150 99,124
+           C 86,104 84,90 96,70
+           C 103,52 100,40 110,40 Z"
         fill="#FFFFFF" stroke="#2B2B2B" stroke-width="6" stroke-linejoin="round"/>
 
   <!-- Rosy cheek (cheerful) -->
-  <circle cx="150" cy="122" r="9" fill="#F7B6B6" opacity="0.7"/>
+  <circle cx="146" cy="116" r="9" fill="#F7B6B6" opacity="0.75"/>
 
-  <!-- Beak, pointing right -->
-  <path d="M 185,96 L 236,114 L 185,132 Z"
+  <!-- Goose bill: broad tapering shape with rounded nail tip -->
+  <path d="M 160,88
+           C 188,84 212,90 224,102
+           C 230,108 230,116 223,120
+           C 206,126 182,128 162,126
+           C 158,112 158,98 160,88 Z"
         fill="#F6A623" stroke="#2B2B2B" stroke-width="6" stroke-linejoin="round"/>
-  <circle cx="206" cy="111" r="2.6" fill="#2B2B2B"/>
+  <!-- Nostril -->
+  <ellipse cx="182" cy="101" rx="3" ry="4.5" fill="#2B2B2B"/>
+  <!-- Smiling mouth line (cartoon smile) -->
+  <path d="M 159,108 C 168,121 198,124 221,112"
+        fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round"/>
 
-  <!-- Eye (bright, cheerful) -->
-  <circle cx="151" cy="98" r="7.5" fill="#2B2B2B"/>
-  <circle cx="148.5" cy="95.5" r="2.6" fill="#FFFFFF"/>
+  <!-- Happy eye with eyebrow -->
+  <path d="M 140,82 C 146,77 156,77 162,81"
+        fill="none" stroke="#2B2B2B" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="150" cy="93" r="8" fill="#2B2B2B"/>
+  <circle cx="147" cy="90" r="3" fill="#FFFFFF"/>
+
+  <!-- Curved wordmark -->
+  <text font-family="'DejaVu Sans','Verdana',sans-serif" font-size="23" font-weight="700"
+        letter-spacing="2" fill="#2B2B2B">
+    <textPath href="#wordmark-arc" startOffset="50%" text-anchor="middle">JOB HARNESS</textPath>
+  </text>
 </svg>
