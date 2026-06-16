@@ -14,9 +14,9 @@ GOOSE_BANNER = r"""   .-""-.
 # Compact cartoon goose (mirrors assets/logo.txt).
 GOOSE_LOGO = r"""    .-""-.
    ( ^  ^ )  *
-    ) <> (
-   (  \_/  )
-    `-.__.-'
+ *  ) <> (
+   (  \_/ )
+    `-._.-'
     w     w
 
   MATCHWRIGHT"""

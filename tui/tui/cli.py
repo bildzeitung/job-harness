@@ -12,7 +12,7 @@ app = typer.Typer(help="Browse job postings in a TUI.")
 def main(
     db: Optional[Path] = typer.Option(None, "--db", help="Override the SQLite DB path."),
 ) -> None:
-    from tui.app import JobViewerApp
+    from tui.app import MatchwrightApp
     from tui.config import get_db_path
 
     try:
@@ -25,7 +25,7 @@ def main(
         typer.echo(f"Database not found: {db_path}", err=True)
         raise typer.Exit(1)
 
-    result = JobViewerApp(db_path=db_path).run()
+    result = MatchwrightApp(db_path=db_path).run()
     if isinstance(result, str):
         typer.echo(result, err=True)
         raise typer.Exit(1)

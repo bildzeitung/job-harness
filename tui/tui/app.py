@@ -10,7 +10,7 @@ from tui.logo import GOOSE_BANNER
 from tui.widgets import CompanyPanel, JobsPanel, SettingsPanel
 
 
-class JobViewerApp(App):
+class MatchwrightApp(App):
     CSS_PATH = "app.tcss"
     BINDINGS = [
         Binding("q", "quit", "Quit"),
@@ -52,7 +52,7 @@ class JobViewerApp(App):
         self.query_one(JobsPanel).focus_table()
 
     def _refresh_titles(self) -> None:
-        self.title = f"Job Viewer — {self.query_one(JobsPanel).count} postings"
+        self.title = f"Matchwright — {self.query_one(JobsPanel).count} postings"
         self.sub_title = f"{self.query_one(CompanyPanel).count} companies"
 
     def action_refresh(self) -> None:

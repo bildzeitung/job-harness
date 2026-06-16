@@ -15,8 +15,8 @@ def index() -> rx.Component:
     return rx.container(
         rx.vstack(
             rx.hstack(
-                rx.image(src="/logo.svg", alt="Job Harness", height="2.5em", width="2.5em"),
-                rx.heading("Job Harness", size="6"),
+                rx.image(src="/logo.svg", alt="Matchwright", height="2.5em", width="2.5em"),
+                rx.heading("Matchwright", size="6"),
                 rx.spacer(),
                 rx.color_mode.button(),
                 width="100%",
@@ -49,4 +49,4 @@ def index() -> rx.Component:
 
 # Theme is configured via RadixThemesPlugin in rxconfig.py.
 app = rx.App()
-app.add_page(index, route="/", title="Job Harness", on_load=[AppState.load, SettingsState.load])
+app.add_page(index, route="/", title="Matchwright", on_load=[AppState.load, SettingsState.load])
