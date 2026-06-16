@@ -11,20 +11,12 @@ GOOSE_BANNER = r"""   .-""-.
   ( ^ ^ )   Matchwright
    \__/      honk!"""
 
-# Full cartoon goose (mirrors assets/logo.txt).
-GOOSE_LOGO = r"""            ~
-          .-""-.
-     *    / ^  ^ \    *
-         |   <>   |
-          \ \__/ /
-        ___|    |___
-       /            \
-      |    (    )    |
-      |              |
-       \            /
-        '._      _.'
-           '----'
-          _/      \_
-        (__)      (__)
+# Compact cartoon goose (mirrors assets/logo.txt).
+GOOSE_LOGO = r"""    .-""-.
+   ( ^  ^ )  *
+    ) <> (
+   (  \_/  )
+    `-.__.-'
+    w     w
 
-       M A T C H W R I G H T"""
+  MATCHWRIGHT"""
