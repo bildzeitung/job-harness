@@ -56,18 +56,17 @@
     <path d="M 133,64 Q 142,54 151,64"/>
   </g>
 
-  <!-- Beak (goose bill) -->
-  <path d="M 128,66
-           C 137,66 143,70 142,76
-           C 141,82 135,87 128,87
-           C 121,87 115,82 114,76
-           C 113,70 119,66 128,66 Z"
+  <!-- Beak (goose bill): a broad spatulate waterfowl bill, mouth line + nail tip -->
+  <path d="M 114,70
+           C 114,66 142,66 142,70
+           C 143,79 139,87 131,90
+           C 129,91 127,91 125,90
+           C 117,87 113,79 114,70 Z"
         fill="#F6A623" stroke="#2B2B2B" stroke-width="4" stroke-linejoin="round"/>
-  <circle cx="123" cy="74" r="1.6" fill="#2B2B2B"/>
-  <circle cx="133" cy="74" r="1.6" fill="#2B2B2B"/>
-
-  <!-- Grin -->
-  <path d="M 115,91 Q 128,101 141,91" fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round"/>
+  <!-- mouth line (gentle smile where the bill halves meet) -->
+  <path d="M 120,80 Q 128,85 136,80" fill="none" stroke="#2B2B2B" stroke-width="3" stroke-linecap="round"/>
+  <!-- nail at the tip -->
+  <path d="M 124,88 Q 128,90.5 132,88" fill="none" stroke="#2B2B2B" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
 
   <!-- Coffee mug, in front of the goose -->
   <!-- steam -->
