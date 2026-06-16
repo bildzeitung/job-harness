@@ -6,25 +6,25 @@ holds a compact banner variant sized for the app header. Keep the two in sync.
 
 from __future__ import annotations
 
-# Compact, header-sized goose head facing right, with wordmark.
-GOOSE_BANNER = r"""    __
-  (^ )__,      Job Harness
-   \___ . >    honk!"""
+# Compact, header-sized cheerful goose, with wordmark.
+GOOSE_BANNER = r"""   .-""-.
+  ( ^ ^ )   Job Harness
+   \__/      honk!"""
 
-# Full square goose head (mirrors assets/logo.txt).
-GOOSE_LOGO = r"""            .-~~~~-.
-          ,'        `.
-         /    ^       \       *
-        |          ___ \
-        |         /    `>      honk!
-        |         \___,.>
-         \           |
-          `.        /
-            `-.__.-'
-             |    |
-             |    |
-            _|    |_
-           /        \
-          '.________.'
+# Full cartoon goose (mirrors assets/logo.txt).
+GOOSE_LOGO = r"""            ~
+          .-""-.
+     *    / ^  ^ \    *
+         |   <>   |
+          \ \__/ /
+        ___|    |___
+       /            \
+      |    (    )    |
+      |              |
+       \            /
+        '._      _.'
+           '----'
+          _/      \_
+        (__)      (__)
 
-         J O B   H A R N E S S"""
+       J O B   H A R N E S S"""
