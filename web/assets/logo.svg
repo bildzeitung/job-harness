@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Job Harness — cheerful goose">
-  <!-- Job Harness logo: a happy cartoon goose, as a circular patch with wordmark. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Matchwright — cheerful goose">
+  <!-- Matchwright logo: a happy cartoon goose, as a circular patch with wordmark. -->
   <defs>
     <clipPath id="badge"><circle cx="128" cy="128" r="124"/></clipPath>
     <!-- Bottom arc for the curved wordmark (left -> right through the bottom). -->
@@ -63,8 +63,8 @@
   <path d="M 116,88 Q 128,99 140,88" fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round"/>
 
   <!-- Curved wordmark -->
-  <text font-family="'DejaVu Sans','Verdana',sans-serif" font-size="23" font-weight="700"
-        letter-spacing="2" fill="#2B2B2B">
-    <textPath href="#wordmark-arc" startOffset="50%" text-anchor="middle">JOB HARNESS</textPath>
+  <text font-family="'DejaVu Sans','Verdana',sans-serif" font-size="20" font-weight="700"
+        letter-spacing="0.5" fill="#2B2B2B">
+    <textPath href="#wordmark-arc" startOffset="50%" text-anchor="middle">MATCHWRIGHT</textPath>
   </text>
 </svg>

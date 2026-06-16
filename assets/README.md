@@ -1,8 +1,9 @@
-# Job Harness logo
+# Matchwright logo
 
-The head of a cheerful goose, facing right — plain lines and flat colour, drawn
-as a circular patch (so it works as a patch or app icon) with a curved
-`JOB HARNESS` wordmark, a smiling bill, a happy eye, and a couple of sparkles.
+A cheerful cartoon goose — plain lines and flat colour, drawn as a circular
+patch (so it works as a patch or app icon) with a curved `MATCHWRIGHT` wordmark,
+happy eyes, a grin, and a couple of sparkles. The goose is a mascot; it does not
+literally depict the name.
 
 | File | Use |
 | --- | --- |
