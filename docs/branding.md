@@ -12,7 +12,8 @@ exports), and notes from the naming research so we don't re-derive them.
   matches you to the role"). ✅
 - **Launch domains:** `matchwright.app` + `getmatchwright.com` (the bare
   `matchwright.com` is taken — see below). ✅ *(decision; not yet registered)*
-- **Logo:** cheerful cartoon-goose patch with a curved `MATCHWRIGHT` wordmark.
+- **Logo:** cheerful cartoon goose cradling a mug of coffee, as a circular patch
+  with a curved `MATCHWRIGHT` wordmark.
   The goose is a **mascot** — it does not literally depict the name. ✅
   - Canonical SVG: `assets/logo.svg` (served from `web/assets/logo.svg`)
   - ASCII: `assets/logo.txt` (+ `tui/tui/logo.py`)
