@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Job Harness — cheerful goose">
-  <!-- Job Harness logo: head of a cheerful goose, as a circular patch with wordmark. -->
+  <!-- Job Harness logo: a happy cartoon goose, as a circular patch with wordmark. -->
   <defs>
     <clipPath id="badge"><circle cx="128" cy="128" r="124"/></clipPath>
     <!-- Bottom arc for the curved wordmark (left -> right through the bottom). -->
@@ -15,43 +15,56 @@
 
   <!-- Cheerful sparkles -->
   <g fill="#FFD24A" stroke="#2B2B2B" stroke-width="1.5" stroke-linejoin="round">
-    <path d="M 196,62 l 4,9 9,4 -9,4 -4,9 -4,-9 -9,-4 9,-4 z"/>
-    <path d="M 70,150 l 3,6 6,3 -6,3 -3,6 -3,-6 -6,-3 6,-3 z"/>
+    <path d="M 196,58 l 4,9 9,4 -9,4 -4,9 -4,-9 -9,-4 9,-4 z"/>
+    <path d="M 58,96 l 3,7 7,3 -7,3 -3,7 -3,-7 -7,-3 7,-3 z"/>
   </g>
 
-  <!-- Goose silhouette: head + short neck, facing right -->
-  <path d="M 110,40
-           C 142,40 166,60 170,92
-           C 171,104 170,116 164,126
-           C 158,140 154,150 156,164
-           C 158,176 156,186 146,192
-           C 138,197 112,197 104,190
-           C 92,181 92,150 99,124
-           C 86,104 84,90 96,70
-           C 103,52 100,40 110,40 Z"
+  <!-- Tuft / cowlick -->
+  <path d="M 122,34 C 120,22 132,20 134,30" fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Webbed feet -->
+  <g fill="#F6A623" stroke="#2B2B2B" stroke-width="4" stroke-linejoin="round">
+    <path d="M 108,150 L 124,150 L 120,168 L 116,162 L 112,168 Z"/>
+    <path d="M 132,150 L 148,150 L 144,168 L 140,162 L 136,168 Z"/>
+  </g>
+
+  <!-- Goose silhouette: round head + plump body (single outline) -->
+  <path d="M 128,33
+           C 145,33 160,46 160,64
+           C 160,80 152,90 146,98
+           C 168,104 178,120 176,134
+           C 174,150 156,162 128,162
+           C 100,162 82,150 80,134
+           C 78,120 88,104 110,98
+           C 104,90 96,80 96,64
+           C 96,46 111,33 128,33 Z"
         fill="#FFFFFF" stroke="#2B2B2B" stroke-width="6" stroke-linejoin="round"/>
 
-  <!-- Rosy cheek (cheerful) -->
-  <circle cx="146" cy="116" r="9" fill="#F7B6B6" opacity="0.75"/>
+  <!-- Wings (folded, with one feather line each) -->
+  <g fill="#FFFFFF" stroke="#2B2B2B" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M 96,108 C 80,116 76,138 90,152 C 94,138 96,122 96,108 Z"/>
+    <path d="M 160,108 C 176,116 180,138 166,152 C 162,138 160,122 160,108 Z"/>
+  </g>
+  <g fill="none" stroke="#2B2B2B" stroke-width="2.5" stroke-linecap="round" opacity="0.6">
+    <path d="M 90,120 C 86,130 86,140 92,148"/>
+    <path d="M 166,120 C 170,130 170,140 164,148"/>
+  </g>
 
-  <!-- Goose bill: broad tapering shape with rounded nail tip -->
-  <path d="M 160,88
-           C 188,84 212,90 224,102
-           C 230,108 230,116 223,120
-           C 206,126 182,128 162,126
-           C 158,112 158,98 160,88 Z"
-        fill="#F6A623" stroke="#2B2B2B" stroke-width="6" stroke-linejoin="round"/>
-  <!-- Nostril -->
-  <ellipse cx="182" cy="101" rx="3" ry="4.5" fill="#2B2B2B"/>
-  <!-- Smiling mouth line (cartoon smile) -->
-  <path d="M 159,108 C 168,121 198,124 221,112"
-        fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round"/>
+  <!-- Blush -->
+  <circle cx="103" cy="82" r="7" fill="#F7B6B6" opacity="0.75"/>
+  <circle cx="153" cy="82" r="7" fill="#F7B6B6" opacity="0.75"/>
 
-  <!-- Happy eye with eyebrow -->
-  <path d="M 140,82 C 146,77 156,77 162,81"
-        fill="none" stroke="#2B2B2B" stroke-width="3.5" stroke-linecap="round"/>
-  <circle cx="150" cy="93" r="8" fill="#2B2B2B"/>
-  <circle cx="147" cy="90" r="3" fill="#FFFFFF"/>
+  <!-- Happy closed eyes (^ ^) -->
+  <g fill="none" stroke="#2B2B2B" stroke-width="4.5" stroke-linecap="round">
+    <path d="M 105,64 Q 114,54 123,64"/>
+    <path d="M 133,64 Q 142,54 151,64"/>
+  </g>
+
+  <!-- Beak -->
+  <ellipse cx="128" cy="76" rx="11" ry="7" fill="#F6A623" stroke="#2B2B2B" stroke-width="4"/>
+
+  <!-- Grin -->
+  <path d="M 116,88 Q 128,99 140,88" fill="none" stroke="#2B2B2B" stroke-width="4" stroke-linecap="round"/>
 
   <!-- Curved wordmark -->
   <text font-family="'DejaVu Sans','Verdana',sans-serif" font-size="23" font-weight="700"
