@@ -50,10 +50,6 @@
     <path d="M 166,120 C 170,130 170,140 164,148"/>
   </g>
 
-  <!-- Blush -->
-  <circle cx="103" cy="82" r="7" fill="#F7B6B6" opacity="0.75"/>
-  <circle cx="153" cy="82" r="7" fill="#F7B6B6" opacity="0.75"/>
-
   <!-- Happy closed eyes (^ ^) -->
   <g fill="none" stroke="#2B2B2B" stroke-width="4.5" stroke-linecap="round">
     <path d="M 105,64 Q 114,54 123,64"/>

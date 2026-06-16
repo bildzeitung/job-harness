@@ -16,7 +16,6 @@ as a circular patch (so it works as a patch or app icon) with a curved
 | Sky badge | `#BFE6F2` |
 | Goose body | `#FFFFFF` |
 | Beak | `#F6A623` |
-| Cheek | `#F7B6B6` |
 | Sparkles | `#FFD24A` |
 | Outline / eye / wordmark | `#2B2B2B` |
 
