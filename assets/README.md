@@ -8,7 +8,7 @@ of sparkles. The goose is a mascot; it does not literally depict the name.
 | File | Use |
 | --- | --- |
 | `logo.svg` | Canonical web/vector version (256×256, circular). Served by the web app from `web/assets/logo.svg`. |
-| `logo.txt` | ASCII version. Embedded in the TUI banner (`tui/tui/logo.py`). |
+| `logo.txt` | Text logo — goose with a coffee mug, drawn with Unicode box-drawing/blocks (not 7-bit ASCII). Mirrored in `tui/tui/logo.py` as `GOOSE_LOGO`. |
 
 ## Palette
 
