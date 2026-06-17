@@ -1,6 +1,6 @@
-# job-web — Reflex web interface
+# job-web — Matchwright Reflex web interface
 
-A reactive web UI for the job-harness, at parity with the Textual TUI: browse
+A reactive web UI for Matchwright, at parity with the Textual TUI: browse
 jobs and companies, sort, view details, change statuses, score a single posting
 (via the `scoring_module`), and trigger the `job-preparer` agent — all with
 live-streamed output.

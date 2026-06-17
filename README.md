@@ -1,6 +1,7 @@
-# Job Search Harness
+# Matchwright
 
-An AI harness that searches for jobs. Currently, it searches:
+Matchwright is an AI harness that finds jobs and tailors your resume and cover
+letters to the best matches. Currently, it searches:
 
 * LinkedIn
 * Indeed

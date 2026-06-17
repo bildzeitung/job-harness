@@ -11,7 +11,7 @@ import pytest
 from harness_db import config_store, disqualifiers, locales, sources_store, users
 from textual.widgets import DataTable, Input, Select, TabbedContent, TabPane
 
-from tui.app import JobViewerApp
+from tui.app import MatchwrightApp
 from tui.widgets import SettingsPanel
 
 
@@ -29,7 +29,7 @@ def _isolate(monkeypatch, tmp_path):
 
 def test_settings_panel_mounts_and_loads(_isolate):
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             app.query_one("#tabs").active = "settings"
             await pilot.pause()
@@ -43,7 +43,7 @@ def test_scoring_modifiers_have_their_own_subtab(_isolate):
     """Scoring modifiers must live in the 'scoring' sub-tab, not under 'disq'."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")  # jobs -> companies -> settings
@@ -63,7 +63,7 @@ def test_scoring_modifiers_have_their_own_subtab(_isolate):
 
 def test_toggling_source_row_persists(_isolate):
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             app.query_one("#tabs").active = "settings"
             await pilot.pause()
@@ -86,7 +86,7 @@ def test_switch_tab_cycles_through_settings(_isolate):
     """Pressing 't' must reach the Settings tab, not just toggle jobs/companies."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             tabs = app.query_one("#tabs")
             assert tabs.active == "jobs"
@@ -105,7 +105,7 @@ def test_entering_settings_focuses_the_subtab_header(_isolate):
     a body control), so left/right arrows switch sub-tabs immediately."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")  # jobs -> companies -> settings
@@ -121,7 +121,7 @@ def test_arrows_switch_subtabs_then_enter_descends(_isolate):
     Enter descends into the active sub-tab's first control."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")  # into settings; header focused, Profile active
@@ -152,7 +152,7 @@ def test_ctrl_a_adds_user_on_profile(_isolate):
     """Ctrl+A is the Add accelerator; on Profile it creates the typed user."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")  # into settings, Profile sub-tab
@@ -172,7 +172,7 @@ def test_accelerators_inert_off_settings_tab(_isolate):
     """The Settings accelerators must not fire while another tab is visible."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             # Stay on the Jobs tab; pre-load a user id into the (hidden) field.
             panel = app.query_one(SettingsPanel)
@@ -189,7 +189,7 @@ def test_add_custom_scoring_block(_isolate):
     """The Scoring sub-tab can add a custom modifier block (name + modifier)."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")  # into settings
@@ -218,7 +218,7 @@ def test_add_scoring_block_rejects_non_integer_modifier(_isolate):
     """A non-integer modifier is rejected and no block is created."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")
@@ -240,7 +240,7 @@ def test_config_tab_renders_localized_labels(_isolate):
     """The Config sub-tab shows the en-US label (no help text), not the raw key."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             app.query_one("#tabs").active = "settings"
             await pilot.pause()
@@ -262,7 +262,7 @@ def test_config_tab_tab_order_skips_scroll_container(_isolate):
     header — no intermediate stop on the VerticalScroll."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             await pilot.press("t")
             await pilot.press("t")  # into settings, header focused
@@ -288,7 +288,7 @@ def test_config_tab_scrolls_last_field_into_view(_isolate):
     VerticalScroll viewport, so it is never left half-hidden."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test(size=(120, 30)) as pilot:
             app.query_one("#tabs").active = "settings"
             await pilot.pause()
@@ -309,7 +309,7 @@ def test_locale_selector_populated_and_persists(_isolate):
     """The Profile locale picker lists seeded locales and persists a change."""
 
     async def scenario():
-        app = JobViewerApp(db_path=_isolate)
+        app = MatchwrightApp(db_path=_isolate)
         async with app.run_test() as pilot:
             app.query_one("#tabs").active = "settings"
             await pilot.pause()
