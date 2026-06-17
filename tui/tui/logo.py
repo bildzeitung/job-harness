@@ -7,9 +7,9 @@ holds a compact banner variant sized for the app header. Keep the two in sync.
 from __future__ import annotations
 
 # Compact, header-sized goose with a coffee cup + wordmark.
-GOOSE_BANNER = """  ╭───╮  ∿
- ( ^ ^ ) ╭▓╮▌  Matchwright
-  ╰─▽─╯  ╰─╯   honk!"""
+GOOSE_BANNER = """  ╭───╮   ╭──╮
+ ( ^ ^ )  │▓▓├╮  Matchwright
+  ╰─▽─╯   ╰──╯╯"""
 
 # Cheerful goose with a coffee mug (mirrors assets/logo.txt).
 GOOSE_LOGO = """       ╭───╮
