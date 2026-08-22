@@ -84,7 +84,6 @@ RenderCV plus the editable harness packages (`harness-db`, `scoring-module`,
 
 This installs:
 
-- **[RTK](https://github.com/rtk-ai/rtk)** — the token-optimizing CLI proxy.
 - **[Ollama](https://ollama.com)** and the **`qwen3-embedding:0.6b`** model — the
   local, on-GPU embedding model that powers semantic repost-dedup and score
   reuse. See [embeddings.md](embeddings.md) for what it
